@@ -2169,16 +2169,7 @@ export default function PrestadorConfiguracoesScreen() {
               {docFrente?.motivo_rejeicao ? (
                 <Text style={styles.docMotivoRejeicaoText}>Motivo: {docFrente.motivo_rejeicao}</Text>
               ) : null}
-              <TouchableOpacity
-                style={styles.docReenviarBtn}
-                disabled={enviandoKyc === 'doc_frente'}
-                onPress={() => handleReenviarDocumentoKyc('doc_frente')}
-              >
-                <Camera size={14} color="#059669" />
-                <Text style={styles.docReenviarBtnText}>
-                  {enviandoKyc === 'doc_frente' ? 'Enviando foto...' : 'Substituir / Reenviar foto'}
-                </Text>
-              </TouchableOpacity>
+
             </View>
 
             {/* Doc Verso */}
@@ -2219,16 +2210,7 @@ export default function PrestadorConfiguracoesScreen() {
               {docVerso?.motivo_rejeicao ? (
                 <Text style={styles.docMotivoRejeicaoText}>Motivo: {docVerso.motivo_rejeicao}</Text>
               ) : null}
-              <TouchableOpacity
-                style={styles.docReenviarBtn}
-                disabled={enviandoKyc === 'doc_verso'}
-                onPress={() => handleReenviarDocumentoKyc('doc_verso')}
-              >
-                <Camera size={14} color="#059669" />
-                <Text style={styles.docReenviarBtnText}>
-                  {enviandoKyc === 'doc_verso' ? 'Enviando foto...' : 'Substituir / Reenviar foto'}
-                </Text>
-              </TouchableOpacity>
+
             </View>
 
             {/* Selfie Segurando o Documento */}
@@ -2269,16 +2251,7 @@ export default function PrestadorConfiguracoesScreen() {
               {docSelfie?.motivo_rejeicao ? (
                 <Text style={styles.docMotivoRejeicaoText}>Motivo: {docSelfie.motivo_rejeicao}</Text>
               ) : null}
-              <TouchableOpacity
-                style={styles.docReenviarBtn}
-                disabled={enviandoKyc === 'selfie_documento'}
-                onPress={() => handleReenviarDocumentoKyc('selfie_documento')}
-              >
-                <Camera size={14} color="#059669" />
-                <Text style={styles.docReenviarBtnText}>
-                  {enviandoKyc === 'selfie_documento' ? 'Enviando selfie...' : 'Substituir / Tirar nova selfie'}
-                </Text>
-              </TouchableOpacity>
+
             </View>
 
             {/* PJ se aplicável */}
@@ -2317,16 +2290,7 @@ export default function PrestadorConfiguracoesScreen() {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  style={styles.docReenviarBtn}
-                  disabled={enviandoKyc === 'contrato_social'}
-                  onPress={() => handleReenviarDocumentoKyc('contrato_social')}
-                >
-                  <Camera size={14} color="#059669" />
-                  <Text style={styles.docReenviarBtnText}>
-                    {enviandoKyc === 'contrato_social' ? 'Enviando...' : 'Substituir documento PJ'}
-                  </Text>
-                </TouchableOpacity>
+
               </View>
             )}
           </View>
