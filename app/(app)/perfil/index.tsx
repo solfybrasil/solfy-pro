@@ -331,6 +331,12 @@ export default function PrestadorConfiguracoesScreen() {
     return Math.round((oks / total) * 100);
   }, [completudeItens]);
 
+  const corCompletude = useMemo(() => {
+    if (percentualCompletude <= 25) return '#EF4444'; // 0 a 25%: Vermelho
+    if (percentualCompletude <= 75) return '#F97316'; // 26 a 75%: Alaranjado
+    return '#10B981'; // 76 a 100%: Verde
+  }, [percentualCompletude]);
+
   const itensFaltantes = useMemo(
     () => completudeItens.filter((x) => !x.ok).map((x) => x.label),
     [completudeItens]
@@ -2380,13 +2386,13 @@ export default function PrestadorConfiguracoesScreen() {
                   : `Complete seu perfil (${percentualCompletude}%)`}
               </Text>
               {percentualCompletude < 100 ? (
-                <Text style={styles.profileCompletionCta}>Completar</Text>
+                <Text style={[styles.profileCompletionCta, { color: corCompletude }]}>Completar</Text>
               ) : (
                 <Check size={16} color="#166534" strokeWidth={3} />
               )}
             </View>
             <View style={styles.profileCompletionTrack}>
-              <View style={[styles.profileCompletionFill, { width: `${percentualCompletude}%` }]} />
+              <View style={[styles.profileCompletionFill, { width: `${percentualCompletude}%`, backgroundColor: corCompletude }]} />
             </View>
             {percentualCompletude < 100 && (
               <Text style={styles.profileCompletionTip} numberOfLines={1}>
