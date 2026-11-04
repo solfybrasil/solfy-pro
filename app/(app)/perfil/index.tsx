@@ -59,6 +59,7 @@ import {
   AlertCircle,
   FileCheck,
   RefreshCw,
+  MapPin,
 } from 'lucide-react-native';
 import { SecaoReputacaoAvaliacoes } from '../../../components/SecaoReputacaoAvaliacoes';
 import { useAlert } from '../../../components/AlertProvider';
@@ -1751,8 +1752,8 @@ export default function PrestadorConfiguracoesScreen() {
                       </Text>
                     </View>
                   </View>
-                  {sol.motivo ? (
-                    <Text style={styles.solicitacaoMotivoText}>Justificativa: {sol.motivo}</Text>
+                  {sol.motivo_solicitacao ? (
+                    <Text style={styles.solicitacaoMotivoText}>Justificativa: {sol.motivo_solicitacao}</Text>
                   ) : null}
                   {sol.status === 'recusada' && sol.motivo_recusa ? (
                     <View style={styles.recusaAlertaBox}>
@@ -3298,6 +3299,33 @@ const styles = StyleSheet.create({
   },
   toggleCircleOn: {
     alignSelf: 'flex-end',
+  },
+  btnActionPrimary: {
+    backgroundColor: '#059669',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#059669',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+      web: {
+        boxShadow: '0 2px 6px rgba(5, 150, 105, 0.2)',
+      },
+    }),
+  },
+  btnActionPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   btnActionOutline: {
     paddingVertical: 12,
