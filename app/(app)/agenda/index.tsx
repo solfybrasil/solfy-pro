@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -533,16 +533,16 @@ export default function AgendaScreen() {
 
             <TouchableOpacity
               style={styles.plusButton3D}
-              activeOpacity={0.82}
+              activeOpacity={0.75}
               onPress={() => router.push('/(app)/demandas')}
             >
               <LinearGradient
-                colors={['#2E5A36', '#1E3E25', '#132817']}
-                start={{ x: 0.3, y: 0.0 }}
-                end={{ x: 0.7, y: 1.0 }}
-                style={styles.plusButtonGradient}
+                colors={['rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.08)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.plusGlassCard}
               >
-                <View style={styles.plusHighlight} />
+                <View style={styles.plusGlassHighlight} pointerEvents="none" />
                 <Plus size={20} color="#FFFFFF" strokeWidth={2.4} />
               </LinearGradient>
             </TouchableOpacity>
@@ -1086,22 +1086,42 @@ const styles = StyleSheet.create({
   plusButton3D: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    overflow: 'hidden',
+    borderRadius: 14,
+    position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 0,
+      },
+      web: {
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
+      },
+    }),
   },
-  plusButtonGradient: {
-    flex: 1,
+  plusGlassCard: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.32)',
     position: 'relative',
+    overflow: 'hidden',
   },
-  plusHighlight: {
+  plusGlassHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    height: 1.2,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    zIndex: 10,
   },
   coverflowContainer: {
     marginTop: 6,

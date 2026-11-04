@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+﻿import React, { useEffect, useRef } from 'react';
 import {
   TouchableOpacity,
   View,
@@ -100,7 +100,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
       onPress={handlePress}
       style={[
         styles.wrapper,
-        { width: size, height: size, borderRadius: size * 0.35 },
+        { width: size, height: size, borderRadius: 14 },
         style,
       ]}
       accessibilityRole="button"
@@ -114,7 +114,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
           {
             width: size,
             height: size,
-            borderRadius: size * 0.35,
+            borderRadius: 14,
             transform: [{ scale: pulseScale }],
             opacity: pulseOpacity,
           },
@@ -126,7 +126,7 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
         colors={['rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.08)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[styles.glassCard, { borderRadius: size * 0.35 }]}
+        style={[styles.glassCard, { borderRadius: 14 }]}
       >
         {/* Linha de reflexo de vidro superior */}
         <View style={styles.glassHighlight} pointerEvents="none" />
@@ -155,19 +155,22 @@ export const NotificationBell: React.FC<NotificationBellProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
     position: 'relative',
     ...Platform.select({
       ios: {
         shadowColor: '#000000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.12,
         shadowRadius: 8,
       },
-      web: {
-        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
-      },
-      default: {
+      android: {
         elevation: 0,
+      },
+      web: {
+        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.1)',
       },
     }),
   },

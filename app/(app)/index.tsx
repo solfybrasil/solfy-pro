@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -543,6 +543,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  redSquare: {
+    width: 14,
+    height: 14,
+    backgroundColor: '#EF4444',
+    borderRadius: 2,
   },
   headerName: {
     fontSize: 16,

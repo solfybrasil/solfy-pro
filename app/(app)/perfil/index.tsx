@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -1385,6 +1385,27 @@ export default function PrestadorConfiguracoesScreen() {
                 <Text style={styles.btnActionOutlineRedText}>Desconectar todos os outros aparelhos</Text>
               </TouchableOpacity>
             )}
+
+            <TouchableOpacity
+              style={[styles.logoutAllButton, { marginTop: 14 }]}
+              activeOpacity={0.8}
+              onPress={handleLogoutAllDevices}
+            >
+              <Shield size={18} color="#D97706" strokeWidth={2.2} />
+              <Text style={styles.logoutAllText}>Sair de todos os aparelhos</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Card 5: Zona de Perigo - Exclusão de Conta (LGPD) */}
+          <View style={[styles.cardGroup, { marginTop: 16, borderColor: '#FEE2E2', borderWidth: 1 }]}>
+            <Text style={[styles.groupSectionHeader, { color: '#991B1B' }]}>Zona de Risco</Text>
+            <Text style={{ fontSize: 11.5, color: '#64748B', lineHeight: 17, marginBottom: 14 }}>
+              Ao solicitar a exclusão da sua conta, seu cadastro, acessos e vínculos com condomínios serão anonimizados permanentemente conforme as diretrizes da LGPD.
+            </Text>
+            <TouchableOpacity style={styles.lgpdDeleteButton} activeOpacity={0.8} onPress={handleExcluirConta}>
+              <Trash2 size={16} color="#991B1B" strokeWidth={2} />
+              <Text style={styles.lgpdDeleteText}>Excluir Minha Conta (LGPD)</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </View>
@@ -1537,6 +1558,17 @@ export default function PrestadorConfiguracoesScreen() {
           <View style={styles.cardGroup}>
             <Text style={styles.groupSectionHeader}>Termo de Aceite Digital — Solfy PRO</Text>
             <Text style={styles.termoIntegralText}>{TEXTO_TERMO_CNPJ_GRANDE_V1}</Text>
+          </View>
+
+          <View style={[styles.cardGroup, { marginTop: 16 }]}>
+            <Text style={styles.groupSectionHeader}>Privacidade e Dados Pessoais (LGPD)</Text>
+            <Text style={{ fontSize: 12, color: '#64748B', lineHeight: 18, marginBottom: 14 }}>
+              Em conformidade com a LGPD (Lei Geral de Proteção de Dados), você pode solicitar o download completo de todos os seus dados cadastrais, logs de atividade e histórico de serviços.
+            </Text>
+            <TouchableOpacity style={styles.lgpdDownloadButton} activeOpacity={0.8} onPress={handleExportarDados}>
+              <Download size={16} color="#0C2617" strokeWidth={2} />
+              <Text style={styles.lgpdDownloadText}>Baixar Meus Dados (LGPD)</Text>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </View>
@@ -2627,24 +2659,9 @@ export default function PrestadorConfiguracoesScreen() {
           <Text style={styles.logoutText}>Sair da Conta</Text>
         </TouchableOpacity>
 
-        {/* ── BOTÃO SAIR DE TODOS OS APARELHOS (FASE 2) ── */}
-        <TouchableOpacity style={styles.logoutAllButton} activeOpacity={0.8} onPress={handleLogoutAllDevices}>
-          <Shield size={18} color="#D97706" strokeWidth={2.2} />
-          <Text style={styles.logoutAllText}>Sair de todos os aparelhos</Text>
-        </TouchableOpacity>
 
-        {/* ── SEÇÃO PRIVACIDADE & LGPD (FASE 4) ── */}
-        <View style={styles.lgpdContainer}>
-          <TouchableOpacity style={styles.lgpdDownloadButton} activeOpacity={0.8} onPress={handleExportarDados}>
-            <Download size={16} color="#0C2617" strokeWidth={2} />
-            <Text style={styles.lgpdDownloadText}>Baixar Meus Dados (LGPD)</Text>
-          </TouchableOpacity>
 
-          <TouchableOpacity style={styles.lgpdDeleteButton} activeOpacity={0.8} onPress={handleExcluirConta}>
-            <Trash2 size={16} color="#991B1B" strokeWidth={2} />
-            <Text style={styles.lgpdDeleteText}>Excluir Minha Conta (LGPD)</Text>
-          </TouchableOpacity>
-        </View>
+
 
         <Text style={styles.versionFooter}>Solfy PRO • Versão 2.1.0 (Build Homologada)</Text>
       </ScrollView>
@@ -2959,13 +2976,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FFFFFF',
     paddingVertical: 14,
     borderRadius: 16,
     marginTop: 10,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#FECACA',
+    borderColor: '#FEE2E2',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#EF4444',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      web: {
+        boxShadow: '0 2px 6px rgba(239, 68, 68, 0.04)',
+      },
+      default: {
+        elevation: 1,
+      },
+    }),
   },
   logoutText: {
     color: '#DC2626',
