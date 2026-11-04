@@ -1117,6 +1117,24 @@ export default function PrestadorConfiguracoesScreen() {
 
             <View style={[styles.fieldBox, { backgroundColor: '#F8FAFC' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={styles.fieldLabel}>Categoria / Especialidade Homologada</Text>
+                <Lock size={12} color="#94A3B8" />
+              </View>
+              <Text style={[styles.fieldInput, { backgroundColor: '#F1F5F9', color: '#0F172A', fontWeight: '600' }]}>
+                {dadosEditaveis.servico || (perfilPro?.categorias_atendidas && perfilPro.categorias_atendidas.length > 0 ? perfilPro.categorias_atendidas.join(', ') : 'Geral')}
+              </Text>
+              <TouchableOpacity
+                style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                onPress={() => setSecaoAtiva('especialidades_raio')}
+              >
+                <Text style={{ fontSize: 12, color: '#059669', fontWeight: '700' }}>
+                  Gerenciar especialidades na aba Especialidades & Raio →
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.fieldBox, { backgroundColor: '#F8FAFC' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Text style={styles.fieldLabel}>WhatsApp Comercial (Protegido por SMS)</Text>
                 <Lock size={12} color="#94A3B8" />
               </View>
