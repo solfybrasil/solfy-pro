@@ -1155,14 +1155,7 @@ export default function PrestadorConfiguracoesScreen() {
                   Nenhuma especialidade homologada ainda
                 </Text>
               )}
-              <TouchableOpacity
-                style={{ marginTop: 6, alignSelf: 'flex-start' }}
-                onPress={() => setSecaoAtiva('especialidades_raio')}
-              >
-                <Text style={{ fontSize: 12, color: '#059669', fontWeight: '700' }}>
-                  Gerenciar especialidades na aba Especialidades & Raio →
-                </Text>
-              </TouchableOpacity>
+
             </View>
 
             <View style={[styles.fieldBox, { backgroundColor: '#F8FAFC' }]}>
