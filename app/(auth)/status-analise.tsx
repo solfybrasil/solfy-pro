@@ -485,9 +485,7 @@ export default function StatusAnaliseScreen() {
             <View style={s.auditorBox}>
               <Text style={s.auditorLabel}>MOTIVO DA PENDÊNCIA:</Text>
               <Text style={s.auditorText}>
-                {caso?.mensagem_ao_usuario ||
-                  params?.mensagem ||
-                  caso?.motivo_bloqueio ||
+                {caso?.mensagem || caso?.motivo || caso?.mensagem_ao_usuario || params?.mensagem || caso?.motivo_bloqueio ||
                   'Um ou mais documentos enviados ficaram ilegíveis ou com reflexo. Por favor, reenvie o documento com boa iluminação.'}
               </Text>
             </View>
@@ -551,10 +549,10 @@ export default function StatusAnaliseScreen() {
               O acesso operacional a esta conta encontra-se suspenso preventivamente para validação cadastral ou documental.
             </Text>
 
-            {caso?.mensagem_ao_usuario && (
+            {(caso?.mensagem || caso?.mensagem_ao_usuario) && (
               <View style={s.auditorBoxNeutral}>
                 <Text style={s.auditorLabelNeutral}>INFORMAÇÕES:</Text>
-                <Text style={s.auditorTextNeutral}>{caso.mensagem_ao_usuario}</Text>
+                <Text style={s.auditorTextNeutral}>{caso?.mensagem || caso?.mensagem_ao_usuario}</Text>
               </View>
             )}
 

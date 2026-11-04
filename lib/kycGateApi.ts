@@ -280,7 +280,9 @@ export interface MeuStatusCadastroResponse {
   tipo?: 'sindico' | 'prestador' | string;
   caso_id?: string | null;
   mensagem?: string;
+  mensagem_ao_usuario?: string;
   motivo?: string;
+  motivo_bloqueio?: string;
   pendencias?: any[];
   prazo_texto?: string;
   contato_suporte?: string;
