@@ -338,6 +338,16 @@ export default function PrestadorConfiguracoesScreen() {
     return '#10B981'; // 76 a 100%: Verde
   }, [percentualCompletude]);
 
+  const listaEspecialidadesHomologadas = useMemo(() => {
+    if (perfilPro?.categorias_atendidas && perfilPro.categorias_atendidas.length > 0) {
+      return perfilPro.categorias_atendidas;
+    }
+    if (dadosEditaveis.servico && dadosEditaveis.servico !== 'Técnico Especialista' && dadosEditaveis.servico !== 'Manutenção Predial') {
+      return [dadosEditaveis.servico];
+    }
+    return [];
+  }, [perfilPro?.categorias_atendidas, dadosEditaveis.servico]);
+
   const itensFaltantes = useMemo(
     () => completudeItens.filter((x) => !x.ok).map((x) => x.label),
     [completudeItens]
@@ -1624,17 +1634,7 @@ export default function PrestadorConfiguracoesScreen() {
 
   // 6. ESPECIALIDADES & RAIO DE ATENDIMENTO
   if (secaoAtiva === 'especialidades_raio') {
-    const listaEspecialidadesHomologadas = useMemo(() => {
-    if (perfilPro?.categorias_atendidas && perfilPro.categorias_atendidas.length > 0) {
-      return perfilPro.categorias_atendidas;
-    }
-    if (dadosEditaveis.servico && dadosEditaveis.servico !== 'Técnico Especialista' && dadosEditaveis.servico !== 'Manutenção Predial') {
-      return [dadosEditaveis.servico];
-    }
-    return [];
-  }, [perfilPro?.categorias_atendidas, dadosEditaveis.servico]);
-
-  const catsAtendidas = listaEspecialidadesHomologadas.length > 0 ? listaEspecialidadesHomologadas : (perfilPro?.categorias_atendidas || [dadosEditaveis.servico].filter(Boolean));
+    const catsAtendidas = listaEspecialidadesHomologadas.length > 0 ? listaEspecialidadesHomologadas : (perfilPro?.categorias_atendidas || [dadosEditaveis.servico].filter(Boolean));
     const categoriasDisponiveis = catalogoCategorias.filter(
       (c) =>
         !catsAtendidas.includes(c.chave) &&
