@@ -1120,9 +1120,31 @@ export default function PrestadorConfiguracoesScreen() {
                 <Text style={styles.fieldLabel}>Categoria / Especialidade Homologada</Text>
                 <Lock size={12} color="#94A3B8" />
               </View>
-              <Text style={[styles.fieldInput, { backgroundColor: '#F1F5F9', color: '#0F172A', fontWeight: '600' }]}>
-                {dadosEditaveis.servico || (perfilPro?.categorias_atendidas && perfilPro.categorias_atendidas.length > 0 ? perfilPro.categorias_atendidas.join(', ') : 'Geral')}
-              </Text>
+              {listaEspecialidadesHomologadas.length > 0 ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                  {listaEspecialidadesHomologadas.map((cat, idx) => (
+                    <View
+                      key={idx}
+                      style={{
+                        backgroundColor: '#ECFDF5',
+                        borderWidth: 1,
+                        borderColor: '#A7F3D0',
+                        paddingHorizontal: 10,
+                        paddingVertical: 5,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <Text style={{ color: '#065F46', fontSize: 13, fontWeight: '700' }}>
+                        {cat}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text style={[styles.fieldInput, { backgroundColor: '#F1F5F9', color: '#64748B', fontStyle: 'italic' }]}>
+                  Nenhuma especialidade homologada ainda
+                </Text>
+              )}
               <TouchableOpacity
                 style={{ marginTop: 6, alignSelf: 'flex-start' }}
                 onPress={() => setSecaoAtiva('especialidades_raio')}
@@ -1602,7 +1624,17 @@ export default function PrestadorConfiguracoesScreen() {
 
   // 6. ESPECIALIDADES & RAIO DE ATENDIMENTO
   if (secaoAtiva === 'especialidades_raio') {
-    const catsAtendidas = perfilPro?.categorias_atendidas || [dadosEditaveis.servico].filter(Boolean);
+    const listaEspecialidadesHomologadas = useMemo(() => {
+    if (perfilPro?.categorias_atendidas && perfilPro.categorias_atendidas.length > 0) {
+      return perfilPro.categorias_atendidas;
+    }
+    if (dadosEditaveis.servico && dadosEditaveis.servico !== 'Técnico Especialista' && dadosEditaveis.servico !== 'Manutenção Predial') {
+      return [dadosEditaveis.servico];
+    }
+    return [];
+  }, [perfilPro?.categorias_atendidas, dadosEditaveis.servico]);
+
+  const catsAtendidas = listaEspecialidadesHomologadas.length > 0 ? listaEspecialidadesHomologadas : (perfilPro?.categorias_atendidas || [dadosEditaveis.servico].filter(Boolean));
     const categoriasDisponiveis = catalogoCategorias.filter(
       (c) =>
         !catsAtendidas.includes(c.chave) &&
