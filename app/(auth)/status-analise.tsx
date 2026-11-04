@@ -12,7 +12,7 @@ import {
   AppState,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import {
@@ -41,6 +41,7 @@ import {
 
 export default function StatusAnaliseScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ recemCadastrado?: string; mensagem?: string }>();
   const insets = useSafeAreaInsets();
   const { user, signOut, refreshPerfil } = useAuth();
   const { showAlert } = useAlert();
@@ -416,7 +417,7 @@ export default function StatusAnaliseScreen() {
             </View>
 
             <Text style={s.cardTitle}>
-              {params.recemCadastrado === 'true' ? 'Cadastro enviado!' : 'Cadastro em análise'}
+              {params?.recemCadastrado === 'true' ? 'Cadastro enviado!' : 'Cadastro em análise'}
             </Text>
 
             <Text style={s.cardDescClean}>
@@ -485,7 +486,7 @@ export default function StatusAnaliseScreen() {
               <Text style={s.auditorLabel}>MOTIVO DA PENDÊNCIA:</Text>
               <Text style={s.auditorText}>
                 {caso?.mensagem_ao_usuario ||
-                  params.mensagem ||
+                  params?.mensagem ||
                   caso?.motivo_bloqueio ||
                   'Um ou mais documentos enviados ficaram ilegíveis ou com reflexo. Por favor, reenvie o documento com boa iluminação.'}
               </Text>
