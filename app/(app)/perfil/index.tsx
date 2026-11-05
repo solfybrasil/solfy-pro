@@ -61,6 +61,7 @@ import {
   RefreshCw,
   MapPin,
 } from 'lucide-react-native';
+import { formatarCPF, formatarCNPJ } from '../../../lib/kycValidations';
 import { SecaoReputacaoAvaliacoes } from '../../../components/SecaoReputacaoAvaliacoes';
 import { useAlert } from '../../../components/AlertProvider';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -347,6 +348,25 @@ export default function PrestadorConfiguracoesScreen() {
     }
     return [];
   }, [perfilPro?.categorias_atendidas, dadosEditaveis.servico]);
+
+  const documentoOficialExibicao = useMemo(() => {
+    const raw =
+      pjData?.cnpj ||
+      pjData?.cpf ||
+      (perfilPro as any)?.cnpj ||
+      (perfilPro as any)?.cpf ||
+      (perfilPro as any)?.documento_fiscal ||
+      perfil?.documento_numero ||
+      '';
+    const limpo = String(raw).replace(/\D/g, '');
+    if (limpo.length === 11) {
+      return formatarCPF(limpo);
+    }
+    if (limpo.length === 14) {
+      return formatarCNPJ(limpo);
+    }
+    return limpo || 'Não informado';
+  }, [pjData, perfilPro, perfil]);
 
   const itensFaltantes = useMemo(
     () => completudeItens.filter((x) => !x.ok).map((x) => x.label),
@@ -1110,8 +1130,8 @@ export default function PrestadorConfiguracoesScreen() {
                 <Text style={styles.fieldLabel}>CPF / CNPJ</Text>
                 <Lock size={12} color="#94A3B8" />
               </View>
-              <Text style={[styles.fieldInput, { backgroundColor: '#F1F5F9', color: '#475569' }]}>
-                {pjData?.cnpj || perfil?.documento_numero || 'Cadastrado no KYC'}
+              <Text style={[styles.fieldInput, { backgroundColor: '#F1F5F9', color: '#0F172A', fontWeight: '600' }]}>
+                {documentoOficialExibicao}
               </Text>
             </View>
 
