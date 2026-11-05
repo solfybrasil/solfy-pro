@@ -290,7 +290,11 @@ export default function PrestadorConfiguracoesScreen() {
         for (let dia = 0; dia <= 6; dia++) {
           const existente = (disp as any[])?.find((d: any) => d.dia_semana === dia);
           if (existente) {
-            gradeNormalizada.push(existente);
+            gradeNormalizada.push({
+              ...existente,
+              horario_inicio: (existente.horario_inicio || '08:00').slice(0, 5),
+              horario_fim: (existente.horario_fim || '18:00').slice(0, 5),
+            });
           } else {
             const isDiaUtil = dia >= 1 && dia <= 5;
             gradeNormalizada.push({
@@ -776,7 +780,26 @@ export default function PrestadorConfiguracoesScreen() {
     if (!perfilPro?.id) return;
     try {
       setSalvandoGrade(true);
-      await salvarDisponibilidade(perfilPro.id, gradeSemanal);
+      const padHora = (h: string, fallback: string) => {
+        if (!h || !h.trim()) return fallback;
+        const limpo = h.trim();
+        if (limpo.includes(':')) {
+          const partes = limpo.split(':');
+          const hh = (partes[0] || '00').padStart(2, '0').slice(-2);
+          const mm = (partes[1] || '00').padEnd(2, '0').slice(0, 2);
+          return `${hh}:${mm}`;
+        }
+        const d = limpo.replace(/\D/g, '');
+        if (d.length === 4) return `${d.slice(0, 2)}:${d.slice(2)}`;
+        return fallback;
+      };
+      const gradeFormatada = gradeSemanal.map((item) => ({
+        ...item,
+        horario_inicio: padHora(item.horario_inicio, '08:00'),
+        horario_fim: padHora(item.horario_fim, '18:00'),
+      }));
+      await salvarDisponibilidade(perfilPro.id, gradeFormatada);
+      setGradeSemanal(gradeFormatada);
       showToast('Horários de atendimento salvos com sucesso!');
     } catch (err: any) {
       showToast(err?.message || 'Erro ao salvar disponibilidade', 'erro');
@@ -798,9 +821,19 @@ export default function PrestadorConfiguracoesScreen() {
     campo: 'horario_inicio' | 'horario_fim',
     valor: string
   ) => {
+    let formatado = valor;
+    if (valor.includes(':')) {
+      const partes = valor.split(':');
+      const hh = partes[0].replace(/\D/g, '').slice(0, 2);
+      const mm = (partes[1] || '').replace(/\D/g, '').slice(0, 2);
+      formatado = partes.length > 1 ? `${hh}:${mm}` : hh;
+    } else {
+      const digitos = valor.replace(/\D/g, '').slice(0, 4);
+      formatado = digitos.length > 2 ? `${digitos.slice(0, 2)}:${digitos.slice(2)}` : digitos;
+    }
     setGradeSemanal((prev) =>
       prev.map((item) =>
-        item.dia_semana === diaIdx ? { ...item, [campo]: valor } : item
+        item.dia_semana === diaIdx ? { ...item, [campo]: formatado } : item
       )
     );
   };
@@ -2018,7 +2051,7 @@ export default function PrestadorConfiguracoesScreen() {
                     <View style={styles.horariosInputRow}>
                       <TextInput
                         style={styles.horarioInput}
-                        value={item.horario_inicio.slice(0, 5)}
+                        value={item.horario_inicio || ''}
                         onChangeText={(t) => handleAlterarHorarioGrade(item.dia_semana, 'horario_inicio', t)}
                         placeholder="08:00"
                         placeholderTextColor="#94A3B8"
@@ -2028,7 +2061,7 @@ export default function PrestadorConfiguracoesScreen() {
                       <Text style={styles.horariosSeparador}>até</Text>
                       <TextInput
                         style={styles.horarioInput}
-                        value={item.horario_fim.slice(0, 5)}
+                        value={item.horario_fim || ''}
                         onChangeText={(t) => handleAlterarHorarioGrade(item.dia_semana, 'horario_fim', t)}
                         placeholder="18:00"
                         placeholderTextColor="#94A3B8"
@@ -3775,19 +3808,23 @@ const styles = StyleSheet.create({
   horariosInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   horarioInput: {
-    width: 60,
-    height: 32,
+    width: 74,
+    height: 38,
     borderWidth: 1,
     borderColor: '#CBD5E1',
-    borderRadius: 6,
+    borderRadius: 8,
     textAlign: 'center',
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     color: '#0F172A',
     backgroundColor: '#FFFFFF',
+    paddingVertical: 0,
+    paddingHorizontal: 4,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   horariosSeparador: {
     fontSize: 11,
