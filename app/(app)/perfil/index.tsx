@@ -54,6 +54,7 @@ import {
   Key,
   Plus,
   Minus,
+  MapPin,
   Sliders,
   CheckCheck,
   AlertCircle,
@@ -1849,8 +1850,8 @@ export default function PrestadorConfiguracoesScreen() {
                       </Text>
                     </View>
                   </View>
-                  {sol.motivo_solicitacao ? (
-                    <Text style={styles.solicitacaoMotivoText}>Justificativa: {sol.motivo_solicitacao}</Text>
+                  {(sol.motivo_solicitacao || (sol as any).motivo) ? (
+                    <Text style={styles.solicitacaoMotivoText}>Justificativa: {sol.motivo_solicitacao || (sol as any).motivo}</Text>
                   ) : null}
                   {sol.status === 'recusada' && sol.motivo_recusa ? (
                     <View style={styles.recusaAlertaBox}>
@@ -2738,6 +2739,19 @@ export default function PrestadorConfiguracoesScreen() {
 }
 
 const styles = StyleSheet.create({
+    btnActionPrimary: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  btnActionPrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   safeContainer: {
     flex: 1,
     backgroundColor: '#F3F5F2',

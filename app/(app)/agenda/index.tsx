@@ -287,10 +287,16 @@ export default function AgendaScreen() {
   }, [carregarCompromissos]);
 
   // Realtime Supabase filtrado para o prestador
+  const carregarCompromissosRef = useRef(carregarCompromissos);
+  useEffect(() => {
+    carregarCompromissosRef.current = carregarCompromissos;
+  }, [carregarCompromissos]);
+
   useEffect(() => {
     if (!prestador?.id) return;
+    const channelName = `agenda_realtime_prestador_${prestador.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel(`agenda_realtime_prestador_${prestador.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -300,7 +306,7 @@ export default function AgendaScreen() {
           filter: `prestador_id=eq.${prestador.id}`,
         },
         () => {
-          carregarCompromissos(true);
+          carregarCompromissosRef.current(true);
         }
       )
       .subscribe();
@@ -308,7 +314,7 @@ export default function AgendaScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [prestador?.id, carregarCompromissos]);
+  }, [prestador?.id]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);

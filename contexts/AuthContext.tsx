@@ -232,7 +232,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // 5. Inadimplência de comissões (Bloqueio)
         if (prestadorData?.id) {
           const inad = await verificarInadimplenciaComissaoPrestador(prestadorData.id);
-          setInadimplencia(inad);
+          setInadimplencia((prev) => {
+            if (
+              prev.inadimplente === inad.inadimplente &&
+              prev.totalEmAtraso === inad.totalEmAtraso &&
+              prev.opsAtrasadas.length === inad.opsAtrasadas.length
+            ) {
+              return prev;
+            }
+            return inad;
+          });
         }
 
         // 6. Termo de CNPJ Grande
@@ -251,7 +260,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const recarregarInadimplencia = useCallback(async () => {
     if (prestador?.id) {
       const inad = await verificarInadimplenciaComissaoPrestador(prestador.id);
-      setInadimplencia(inad);
+      setInadimplencia((prev) => {
+        if (
+          prev.inadimplente === inad.inadimplente &&
+          prev.totalEmAtraso === inad.totalEmAtraso &&
+          prev.opsAtrasadas.length === inad.opsAtrasadas.length
+        ) {
+          return prev;
+        }
+        return inad;
+      });
     }
   }, [prestador?.id]);
 

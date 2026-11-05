@@ -135,8 +135,9 @@ export default function StatusAnaliseScreen() {
     const currentUid = user?.id || caso?.usuario_id;
     if (!currentUid) return;
 
+    const channelName = `status_analise_realtime_${currentUid}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel(`status_analise_realtime_${currentUid}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {

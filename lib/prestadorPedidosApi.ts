@@ -1,3 +1,6 @@
+import { Platform } from 'react-native';
+import { decode } from 'base64-arraybuffer';
+import * as FileSystemLegacy from 'expo-file-system/legacy';
 import { supabase } from './supabase';
 
 export type EstadoPedidoPrestador =
@@ -158,8 +161,124 @@ export function calcularEstadoPrestador(
   return 'recebido';
 }
 
+export interface OportunidadeCard {
+  despacho_id: string;
+  solicitacao_id: string;
+  prestador_id: string;
+  titulo: string;
+  categoria: string;
+  descricao: string;
+  urgencia: 'baixa' | 'normal' | 'alta' | 'urgente';
+  eh_emergencia: boolean;
+  bairro: string;
+  cidade: string;
+  distancia_km: number;
+  notificado_em: string;
+  prazo_limite_aceite: string;
+  segundos_restantes_aceite: number;
+  prazo_horas_aceite: number;
+  vagas_restantes: number;
+  fotos_urls: string[];
+  criado_em: string;
+}
+
+export interface MinhaDemandaItem {
+  despacho_id: string;
+  solicitacao_id: string;
+  prestador_id: string;
+  titulo: string;
+  categoria: string;
+  descricao: string;
+  urgencia: 'baixa' | 'normal' | 'alta' | 'urgente';
+  eh_emergencia: boolean;
+  status_solicitacao: string;
+  status_prestador: string;
+  aba: 'em_andamento' | 'fechados' | 'encerrados';
+  proxima_acao: string;
+  proxima_acao_codigo: string;
+  condominio_id: string;
+  condominio_nome: string;
+  local: {
+    bairro: string;
+    cidade: string;
+    estado: string;
+    logradouro?: string;
+    numero?: string;
+    complemento?: string;
+    cep?: string;
+    distancia_km?: number;
+  };
+  visita?: {
+    id: string;
+    data_visita: string;
+    horario_inicio: string;
+    horario_fim: string;
+    status: string;
+    observacoes?: string | null;
+    ja_passou: boolean;
+  } | null;
+  cotacao?: {
+    id: string;
+    valor: number;
+    valor_total_centavos: number;
+    prazo_execucao_dias: number;
+    observacoes?: string | null;
+    selecionada: boolean;
+    status?: string;
+    criado_em: string;
+    garantia_meses?: number;
+    condicoes_pagamento?: string | null;
+  } | null;
+  fotos_urls: string[];
+  data_aceite?: string | null;
+  criado_em: string;
+  notificado_em: string;
+}
+
 /**
- * 1. LISTAR OPORTUNIDADES / PEDIDOS DESPACHADOS PARA O PRESTADOR
+ * 1. LISTAR OPORTUNIDADES DISPONÍVEIS NA HOME VIA RPC DO SERVIDOR
+ */
+export async function buscarOportunidadesHome(
+  prestadorId?: string
+): Promise<OportunidadeCard[]> {
+  try {
+    const { data, error } = await supabase.rpc('prestador_oportunidades', {
+      p_prestador_id: prestadorId || null,
+    });
+    if (error) {
+      console.warn('[PrestadorPedidosAPI] Erro ao buscar oportunidades via RPC:', error);
+      return [];
+    }
+    return (data || []) as OportunidadeCard[];
+  } catch (err) {
+    console.error('[PrestadorPedidosAPI] Exceção ao buscar oportunidades:', err);
+    return [];
+  }
+}
+
+/**
+ * 2. LISTAR SERVIÇOS DO PRESTADOR NA ABA DEMANDAS VIA RPC DO SERVIDOR
+ */
+export async function buscarMinhasDemandasPrestador(
+  prestadorId?: string
+): Promise<MinhaDemandaItem[]> {
+  try {
+    const { data, error } = await supabase.rpc('prestador_minhas_demandas', {
+      p_prestador_id: prestadorId || null,
+    });
+    if (error) {
+      console.warn('[PrestadorPedidosAPI] Erro ao buscar minhas demandas via RPC:', error);
+      return [];
+    }
+    return (data || []) as MinhaDemandaItem[];
+  } catch (err) {
+    console.error('[PrestadorPedidosAPI] Exceção ao buscar minhas demandas:', err);
+    return [];
+  }
+}
+
+/**
+ * 3. RETROCOMPATIBILIDADE: Mantém assinatura original
  */
 export async function buscarOportunidadesPrestador(
   prestadorId: string
@@ -715,6 +834,104 @@ export async function verificarPodeEnviarCotacao(
   }
 }
 
+import { otimizarImagem, validarMagicBytes, obterBufferDoUri } from './imageOptimizer';
+
+/**
+ * Faz upload de anexo do orçamento (foto ou PDF) para o bucket 'solicitacao-anexos'
+ * na pasta isolada da cotação: solicitacao-anexos/cotacoes/{cotacao_id}/...
+ * 
+ * Regras:
+ * - Apenas o prestador autor, o síndico do condomínio e admin têm permissão de leitura.
+ * - Fotos são convertidas para WebP (máx 300 KB, sem EXIF/GPS, com fallback JPEG).
+ * - PDFs são validados por magic bytes (%PDF) e limitados a 5 MB.
+ */
+export async function uploadAnexoOrcamento(
+  uriOrFile: any,
+  cotacaoId: string,
+  nomeOriginal: string
+): Promise<{ path: string; nome: string; tipo: string; url?: string } | null> {
+  try {
+    const bucket = 'solicitacao-anexos';
+    const isPdf = (nomeOriginal || '').toLowerCase().endsWith('.pdf');
+    const cleanName = (nomeOriginal || `orcamento_${Date.now()}.${isPdf ? 'pdf' : 'webp'}`).replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    if (isPdf) {
+      let buffer: ArrayBuffer;
+      if (uriOrFile instanceof ArrayBuffer) {
+        buffer = uriOrFile;
+      } else if (typeof Blob !== 'undefined' && uriOrFile instanceof Blob) {
+        buffer = await uriOrFile.arrayBuffer();
+      } else if (typeof uriOrFile === 'string') {
+        buffer = await obterBufferDoUri(uriOrFile);
+      } else {
+        throw new Error('Formato de arquivo PDF não suportado.');
+      }
+
+      const check = validarMagicBytes(buffer);
+      if (!check.valido || check.mimeDetectado !== 'application/pdf') {
+        throw new Error('Arquivo inválido: o anexo PDF selecionado está corrompido ou não é um PDF válido.');
+      }
+      if (buffer.byteLength > 5 * 1024 * 1024) {
+        throw new Error('O arquivo PDF excede o limite máximo permitido de 5 MB.');
+      }
+
+      const path = `cotacoes/${cotacaoId}/${Date.now()}_${cleanName}`;
+      const { error: upErr } = await supabase.storage.from(bucket).upload(path, buffer, {
+        contentType: 'application/pdf',
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+      if (upErr) {
+        console.warn('[uploadAnexoOrcamento] Erro no upload do PDF:', upErr.message);
+        throw upErr;
+      }
+
+      return {
+        path,
+        nome: nomeOriginal || cleanName,
+        tipo: 'pdf',
+      };
+    } else {
+      const nomeBase = `proposta_${Date.now()}`;
+      const otimizada = await otimizarImagem(uriOrFile, 'demanda_chat_portfolio', {
+        nomeBase,
+        gerarMiniatura: true,
+      });
+
+      const path = `cotacoes/${cotacaoId}/${otimizada.nomeArquivo}`;
+      const { error: upErr } = await supabase.storage.from(bucket).upload(path, otimizada.buffer, {
+        contentType: otimizada.mimeType,
+        cacheControl: '3600',
+        upsert: true,
+      });
+
+      if (upErr) {
+        console.warn('[uploadAnexoOrcamento] Erro no upload da foto otimizada:', upErr.message);
+        throw upErr;
+      }
+
+      if (otimizada.thumbBuffer && otimizada.nomeThumb) {
+        const thumbPath = `cotacoes/${cotacaoId}/${otimizada.nomeThumb}`;
+        await supabase.storage.from(bucket).upload(thumbPath, otimizada.thumbBuffer, {
+          contentType: otimizada.mimeType,
+          cacheControl: '3600',
+          upsert: true,
+        }).catch((e) => console.warn('[uploadAnexoOrcamento] Falha ao enviar miniatura:', e));
+      }
+
+      return {
+        path,
+        nome: nomeOriginal || otimizada.nomeArquivo,
+        tipo: 'imagem',
+      };
+    }
+  } catch (err: any) {
+    console.warn('[uploadAnexoOrcamento] Exceção:', err?.message);
+    throw err;
+  }
+}
+
 /**
  * 6. ENVIAR OU EDITAR COTAÇÃO COMERCIAL
  */
@@ -730,6 +947,7 @@ export async function enviarOuEditarCotacaoPrestador(params: {
   condicoes_pagamento?: string;
   origem_cotacao?: 'direta' | 'visita_tecnica';
   visita_id?: string | null;
+  anexos?: any[];
 }): Promise<{ sucesso: boolean; cotacao_id?: string; erro?: string }> {
   try {
     const {
@@ -744,6 +962,7 @@ export async function enviarOuEditarCotacaoPrestador(params: {
       condicoes_pagamento,
       origem_cotacao,
       visita_id,
+      anexos,
     } = params;
 
     let obsFinal = observacoes || '';
@@ -755,23 +974,19 @@ export async function enviarOuEditarCotacaoPrestador(params: {
     }
 
     if (cotacaoId) {
-      // Edição de proposta existente (somente se não foi aprovada)
-      const { data: cotExistente, error: errGet } = await supabase
+      // Verifica se a proposta já existe no banco
+      const { data: cotExistente } = await supabase
         .from('cotacoes')
         .select('id, selecionada')
         .eq('id', cotacaoId)
-        .single();
+        .maybeSingle();
 
-      if (errGet || !cotExistente) {
-        return { sucesso: false, erro: 'Proposta não encontrada.' };
-      }
-      if (cotExistente.selecionada) {
-        return { sucesso: false, erro: 'Esta proposta já foi aprovada pelo síndico e não pode mais ser alterada.' };
-      }
+      if (cotExistente) {
+        if (cotExistente.selecionada) {
+          return { sucesso: false, erro: 'Esta proposta já foi aprovada pelo síndico e não pode mais ser alterada.' };
+        }
 
-      const { error: updErr } = await supabase
-        .from('cotacoes')
-        .update({
+        const updatePayload: any = {
           valor: Number(valor),
           valor_total_centavos: Math.round(Number(valor) * 100),
           prazo_execucao_dias: Number(prazo_execucao_dias) || 1,
@@ -779,34 +994,47 @@ export async function enviarOuEditarCotacaoPrestador(params: {
           garantia_meses: Number(garantia_meses) || 0,
           condicoes_pagamento: condicoes_pagamento || null,
           atualizado_em: new Date().toISOString(),
-        })
-        .eq('id', cotacaoId);
+        };
+        if (anexos && anexos.length > 0) {
+          updatePayload.anexos = anexos;
+        }
+        const { error: updErr } = await supabase
+          .from('cotacoes')
+          .update(updatePayload)
+          .eq('id', cotacaoId);
 
-      if (updErr) {
-        return { sucesso: false, erro: updErr.message };
+        if (updErr) {
+          return { sucesso: false, erro: updErr.message };
+        }
+
+        return { sucesso: true, cotacao_id: cotacaoId };
       }
-
-      return { sucesso: true, cotacao_id: cotacaoId };
     }
 
-    // Inserção de nova proposta comercial
+    // Inserção de nova proposta comercial (preservando o cotacaoId gerado para anexos se houver)
+    const insertPayload: any = {
+      solicitacao_id: solicitacaoId,
+      prestador_id: prestadorId,
+      valor: Number(valor),
+      valor_total_centavos: Math.round(Number(valor) * 100),
+      prazo_execucao_dias: Number(prazo_execucao_dias) || 1,
+      observacoes: obsFinal.trim(),
+      origem_cotacao: origem_cotacao || (visita_id ? 'visita_tecnica' : 'direta'),
+      visita_id: visita_id || null,
+      selecionada: false,
+      composicao: 'valor_unico',
+      material_fornecido_por: 'nao_se_aplica',
+      garantia_meses: Number(garantia_meses) || 0,
+      condicoes_pagamento: condicoes_pagamento || null,
+      anexos: anexos && anexos.length > 0 ? anexos : [],
+    };
+    if (cotacaoId) {
+      insertPayload.id = cotacaoId;
+    }
+
     const { data: novaCotacao, error: insertErr } = await supabase
       .from('cotacoes')
-      .insert({
-        solicitacao_id: solicitacaoId,
-        prestador_id: prestadorId,
-        valor: Number(valor),
-        valor_total_centavos: Math.round(Number(valor) * 100),
-        prazo_execucao_dias: Number(prazo_execucao_dias) || 1,
-        observacoes: obsFinal.trim(),
-        origem_cotacao: origem_cotacao || (visita_id ? 'visita_tecnica' : 'direta'),
-        visita_id: visita_id || null,
-        selecionada: false,
-        composicao: 'valor_unico',
-        material_fornecido_por: 'nao_se_aplica',
-        garantia_meses: Number(garantia_meses) || 0,
-        condicoes_pagamento: condicoes_pagamento || null,
-      })
+      .insert(insertPayload)
       .select('id')
       .single();
 
@@ -955,6 +1183,21 @@ export async function aceitarConviteDespacho(
       mensagem: err?.message || 'Falha de conexão ao aceitar convite.',
     };
   }
+}
+
+export async function recusarConviteDespacho(
+  despachoId: string,
+  prestadorId: string,
+  motivo: string,
+  observacao?: string
+): Promise<{ sucesso: boolean; mensagem?: string }> {
+  const res = await recusarChamadoPrestador({
+    despachoId,
+    prestadorId,
+    motivo,
+    observacao,
+  });
+  return { sucesso: res.sucesso, mensagem: res.erro };
 }
 
 export async function recusarChamadoPrestador(params: {

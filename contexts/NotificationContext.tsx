@@ -200,7 +200,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
 
     // 2. Cria canal global único no Supabase Realtime
-    const canalNome = `realtime_notificacoes_user_${user.id}`;
+    const canalNome = `realtime_notificacoes_user_${user.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const canal = supabase
       .channel(canalNome)
       .on(

@@ -262,8 +262,9 @@ export default function ChatThreadView({
 
     carregarInfoSolicitacao();
 
+    const canalStatusName = `solicitacao_status_sync_${solicitacaoId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const canalStatus = supabase
-      .channel(`solicitacao_status_sync_${solicitacaoId}`)
+      .channel(canalStatusName)
       .on(
         'postgres_changes',
         {

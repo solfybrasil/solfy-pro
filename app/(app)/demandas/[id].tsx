@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -48,6 +48,7 @@ import { SolfyLoader } from '../../../components/SolfyLoader';
 import { supabase } from '../../../lib/supabase';
 import {
   buscarDetalhesPedidoPrestador,
+  uploadAnexoOrcamento,
   aceitarConviteDespacho,
   recusarChamadoPrestador,
   enviarOuEditarCotacaoPrestador,
@@ -147,6 +148,9 @@ export default function DemandaDetalhesPrestadorScreen() {
   const [orcamentoValidade, setOrcamentoValidade] = useState('15 dias');
   const [orcamentoPagamento, setOrcamentoPagamento] = useState('');
   const [orcamentoEscopo, setOrcamentoEscopo] = useState('');
+  const [orcamentoAnexoUri, setOrcamentoAnexoUri] = useState<any>(null);
+  const [orcamentoAnexoNome, setOrcamentoAnexoNome] = useState('');
+  const [orcamentoAnexoTipo, setOrcamentoAnexoTipo] = useState<'imagem' | 'pdf'>('imagem');
 
   // Estado da Finalização do Contrato (Prestador)
   const [contratoValorFinal, setContratoValorFinal] = useState('');
@@ -219,10 +223,16 @@ export default function DemandaDetalhesPrestadorScreen() {
   // ---------------------------------------------------------
   // SUPABASE REALTIME (ATUALIZAÇÃO INSTANTÂNEA)
   // ---------------------------------------------------------
+  const carregarDadosRef = useRef(carregarDados);
+  useEffect(() => {
+    carregarDadosRef.current = carregarDados;
+  }, [carregarDados]);
+
   useEffect(() => {
     if (!id) return;
+    const channelName = `pedido_detalhe_live_${id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const channel = supabase
-      .channel(`pedido_detalhe_live_${id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'solicitacao_despacho', filter: `solicitacao_id=eq.${id}` },
@@ -246,14 +256,14 @@ export default function DemandaDetalhesPrestadorScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'prestador_avaliacoes', filter: `solicitacao_id=eq.${id}` },
-        () => carregarDados()
+        () => carregarDadosRef.current()
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [id, carregarDados]);
+  }, [id]);
 
   // ---------------------------------------------------------
   // DETERMINA O ESTADO DA TELA (UM ESTADO POR TELA)
@@ -432,6 +442,73 @@ export default function DemandaDetalhesPrestadorScreen() {
     );
   };
 
+    const handleSelecionarArquivoOrcamento = async () => {
+    if (Platform.OS === 'web') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'application/pdf,image/*';
+      input.onchange = (e: any) => {
+        const file = e.target.files?.[0];
+        if (file) {
+          if (file.size > 15 * 1024 * 1024) {
+            Alert.alert('Arquivo muito grande', 'O tamanho máximo permitido é de 15 MB.');
+            return;
+          }
+          const isPdf = file.name?.toLowerCase().endsWith('.pdf');
+          setOrcamentoAnexoUri(file);
+          setOrcamentoAnexoNome(file.name);
+          setOrcamentoAnexoTipo(isPdf ? 'pdf' : 'imagem');
+        }
+      };
+      input.click();
+      return;
+    }
+
+    Alert.alert(
+      'Anexar Foto ou PDF',
+      'Como deseja anexar o arquivo do orçamento?',
+      [
+        {
+          text: 'Tirar Foto',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert('Permissão necessária', 'Permita o acesso à câmera para tirar foto.');
+              return;
+            }
+            const res = await ImagePicker.launchCameraAsync({
+              quality: 0.8,
+            });
+            if (!res.canceled && res.assets?.[0]?.uri) {
+              setOrcamentoAnexoUri(res.assets[0].uri);
+              setOrcamentoAnexoNome(`orcamento_${Date.now()}.jpg`);
+              setOrcamentoAnexoTipo('imagem');
+            }
+          },
+        },
+        {
+          text: 'Escolher da Galeria',
+          onPress: async () => {
+            const res = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ImagePicker.MediaTypeOptions.Images,
+              quality: 0.8,
+            });
+            if (!res.canceled && res.assets?.[0]?.uri) {
+              setOrcamentoAnexoUri(res.assets[0].uri);
+              setOrcamentoAnexoNome(`orcamento_${Date.now()}.jpg`);
+              setOrcamentoAnexoTipo('imagem');
+            }
+          },
+        },
+        { text: 'Cancelar', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleRemoverAnexoOrcamento = () => {
+    setOrcamentoAnexoUri(null);
+    setOrcamentoAnexoNome('');
+  };
   const handleSalvarOrcamento = async () => {
     if (!pedido || !prestador?.id) return;
     const numLimpo = orcamentoValor.replace(/[^0-9,]/g, '').replace(',', '.');
@@ -446,8 +523,28 @@ export default function DemandaDetalhesPrestadorScreen() {
     setSubmitting(true);
     try {
       if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+      const cotacaoIdAlvo = pedido.cotacao?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'cot_' + Date.now());
+
+      let anexosProposta: any[] = [];
+      if (orcamentoAnexoUri) {
+        const uploadResult = await uploadAnexoOrcamento(
+          orcamentoAnexoUri,
+          cotacaoIdAlvo,
+          orcamentoAnexoNome || 'orcamento_anexo'
+        );
+        if (uploadResult) {
+          anexosProposta.push({
+            nome: uploadResult.nome,
+            path: uploadResult.path,
+            tipo: uploadResult.tipo,
+            criado_em: new Date().toISOString(),
+          });
+        }
+      }
+
       const res = await enviarOuEditarCotacaoPrestador({
-        cotacaoId: pedido.cotacao?.id,
+        cotacaoId: cotacaoIdAlvo,
         solicitacaoId: pedido.solicitacao_id,
         prestadorId: prestador.id,
         despachoId: pedido.despacho_id,
@@ -458,10 +555,13 @@ export default function DemandaDetalhesPrestadorScreen() {
         garantia_meses: 3,
         origem_cotacao: pedido.visita ? 'visita_tecnica' : 'direta',
         visita_id: pedido.visita?.id || null,
+        anexos: anexosProposta.length > 0 ? anexosProposta : undefined,
       });
 
       if (res.sucesso) {
         setModalOrcamentoVisible(false);
+        setOrcamentoAnexoUri(null);
+        setOrcamentoAnexoNome('');
         await carregarDados();
       } else {
         Alert.alert('Erro', res.erro || 'Falha ao enviar orçamento.');
@@ -1747,15 +1847,43 @@ export default function DemandaDetalhesPrestadorScreen() {
               />
             </View>
 
-            {/* Botão Tracejado: Adicionar foto ou PDF */}
-            <TouchableOpacity
-              onPress={() => Alert.alert('Anexar arquivo', 'Escolha foto ou PDF do orçamento.')}
-              style={styles.dashedBtn}
-              activeOpacity={0.8}
-            >
-              <Plus size={18} color="#3B4640" strokeWidth={2.2} />
-              <Text style={styles.dashedBtnText}>Adicionar foto ou PDF</Text>
-            </TouchableOpacity>
+            {/* Anexo de Foto ou PDF */}
+            {orcamentoAnexoNome ? (
+              <View style={styles.anexoCardContainer}>
+                <View style={styles.anexoCardInfo}>
+                  <View style={styles.anexoIconBox}>
+                    {orcamentoAnexoTipo === 'pdf' ? (
+                      <FileText size={20} color={COLORS.accent} strokeWidth={2} />
+                    ) : (
+                      <FileUp size={20} color={COLORS.accent} strokeWidth={2} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={styles.anexoNomeText} numberOfLines={1}>
+                      {orcamentoAnexoNome}
+                    </Text>
+                    <Text style={styles.anexoStatusText}>Arquivo pronto para envio</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  onPress={handleRemoverAnexoOrcamento}
+                  style={styles.anexoRemoveBtn}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Remover anexo"
+                >
+                  <X size={16} color={COLORS.red} strokeWidth={2.4} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSelecionarArquivoOrcamento}
+                style={styles.dashedBtn}
+                activeOpacity={0.8}
+              >
+                <Plus size={18} color="#3B4640" strokeWidth={2.2} />
+                <Text style={styles.dashedBtnText}>Adicionar foto ou PDF</Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
 
           {/* Barra inferior fixa do orçamento */}
@@ -2719,6 +2847,51 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY,
     textAlignVertical: 'top',
     minHeight: 100,
+  },
+    anexoCardContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#D0DDD5',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  anexoCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  anexoIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    backgroundColor: COLORS.accentSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  anexoNomeText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.ink,
+  },
+  anexoStatusText: {
+    fontSize: 12,
+    color: COLORS.accent,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  anexoRemoveBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dashedBtn: {
     height: 52,

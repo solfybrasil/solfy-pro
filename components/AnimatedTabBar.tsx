@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, memo } from 'react';
+import React, { useEffect, useState, useMemo, useRef, memo, useCallback } from 'react';
 import {
   LayoutChangeEvent,
   Platform,
@@ -28,10 +28,11 @@ export const TAB_BAR_HEIGHT = 64;
 const PILL_HEIGHT = 48;
 /** Quanto a aba selecionada é mais larga que as outras (2.6 = 2,6x). Maior = empurra mais. */
 const ACTIVE_WEIGHT = 2.6;
-const SPRING = { damping: 16, stiffness: 180, mass: 0.9 };
-/** Mola da borda da frente (rápida) e da borda de trás (mais lenta) da pílula (efeito gota líquida). */
-const LEAD = { damping: 18, stiffness: 260, mass: 0.8 };
-const TRAIL = { damping: 18, stiffness: 120, mass: 1 };
+
+// Molas ultrarrápidas e firmes para resposta instantânea (< 220ms de assentamento)
+const SPRING = { damping: 22, stiffness: 420, mass: 0.6 };
+const LEAD = { damping: 24, stiffness: 520, mass: 0.6 };
+const TRAIL = { damping: 24, stiffness: 340, mass: 0.6 };
 const PILL_INSET = 2;
 
 const ICON_SIZE = 20;
@@ -83,6 +84,7 @@ interface TabItemProps {
   activeWidth: number;
   inactiveColor: string;
   onPress: () => void;
+  onPressIn: () => void;
   onLongPress: () => void;
   testID?: string;
   reduceMotion: boolean;
@@ -98,6 +100,7 @@ const TabItem = memo(function TabItem({
   activeWidth,
   inactiveColor,
   onPress,
+  onPressIn,
   onLongPress,
   testID,
   reduceMotion,
@@ -113,17 +116,17 @@ const TabItem = memo(function TabItem({
 
   const maxLabel = Math.max(activeWidth - ICON_SIZE - GAP - SIDE_PADDING * 2, 0);
 
-  // A aba cresce e as outras encolhem ao mesmo tempo: é isso que "empurra" as vizinhas.
+  // A aba cresce e as outras encolhem na UI thread via transform / width
   const itemStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [inactiveWidth, activeWidth]),
   }));
 
-  // Animação de press: leve compressão no ícone
+  // Animação de press: leve compressão imediata no ícone
   const iconStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.88]) }],
+    transform: [{ scale: interpolate(pressed.value, [0, 1], [1, 0.90]) }],
   }));
 
-  // O nome entra deslizando ao lado do ícone com fade in suave
+  // O nome entra deslizando ao lado do ícone com fade in rápido
   const labelStyle = useAnimatedStyle(() => ({
     maxWidth: interpolate(progress.value, [0, 1], [0, maxLabel], Extrapolation.CLAMP),
     marginLeft: interpolate(progress.value, [0, 1], [0, GAP], Extrapolation.CLAMP),
@@ -131,7 +134,7 @@ const TabItem = memo(function TabItem({
     transform: [{ translateX: interpolate(progress.value, [0, 1], [-8, 0], Extrapolation.CLAMP) }],
   }));
 
-  // Transição de opacidade da cor do ícone sincronizada com a chegada da pílula
+  // Transição de opacidade da cor do ícone sincronizada na GPU
   const activeIconStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.25, 0.75], [0, 1], Extrapolation.CLAMP),
   }));
@@ -149,8 +152,13 @@ const TabItem = memo(function TabItem({
         testID={testID}
         onPress={onPress}
         onLongPress={onLongPress}
-        onPressIn={() => (pressed.value = withTiming(1, { duration: 90 }))}
-        onPressOut={() => (pressed.value = withSpring(0, SPRING))}
+        onPressIn={() => {
+          pressed.value = withTiming(1, { duration: 60 });
+          onPressIn();
+        }}
+        onPressOut={() => {
+          pressed.value = withSpring(0, SPRING);
+        }}
         style={styles.pressable}
         hitSlop={4}
       >
@@ -220,6 +228,13 @@ function AnimatedTabBarComponent({ state, descriptors, navigation }: BottomTabBa
     return idx !== -1 ? idx : 2;
   }, [visibleRoutes, currentRouteName]);
 
+  // Índice otimista imediato no toque (resposta no mesmo frame)
+  const [optimisticIndex, setOptimisticIndex] = useState(activeIndex);
+
+  useEffect(() => {
+    setOptimisticIndex(activeIndex);
+  }, [activeIndex]);
+
   const dockWidth = Math.min(windowWidth - 28, 440);
   const initialRowWidth = dockWidth - 12; // paddingHorizontal: 6 * 2
   const [rowWidth, setRowWidth] = useState(initialRowWidth);
@@ -232,47 +247,59 @@ function AnimatedTabBarComponent({ state, descriptors, navigation }: BottomTabBa
   // ---- Pílula que DESLIZA de uma aba para a outra (Efeito Gota Líquida Reanimated) ----
   const leftEdge = useSharedValue(activeIndex * inactiveWidth + PILL_INSET);
   const rightEdge = useSharedValue(activeIndex * inactiveWidth + activeWidth - PILL_INSET);
-  const prevIndex = useRef<number | null>(null);
+  const prevIndex = useRef<number>(activeIndex);
 
-  useEffect(() => {
+  // Função para disparar a animação da pílula imediatamente no toque
+  const moverPilula = useCallback((targetIndex: number) => {
     if (!unit) return;
-    const targetLeft = activeIndex * inactiveWidth + PILL_INSET;
-    const targetRight = activeIndex * inactiveWidth + activeWidth - PILL_INSET;
+    const targetLeft = targetIndex * inactiveWidth + PILL_INSET;
+    const targetRight = targetIndex * inactiveWidth + activeWidth - PILL_INSET;
     const prev = prevIndex.current;
-    prevIndex.current = activeIndex;
+    prevIndex.current = targetIndex;
 
-    if (prev === null || prev === activeIndex || reduceMotion) {
+    if (reduceMotion) {
       leftEdge.value = targetLeft;
       rightEdge.value = targetRight;
       return;
     }
 
-    const goingRight = activeIndex > prev;
+    const goingRight = targetIndex > prev;
     leftEdge.value = withSpring(targetLeft, goingRight ? TRAIL : LEAD);
     rightEdge.value = withSpring(targetRight, goingRight ? LEAD : TRAIL);
-  }, [activeIndex, unit, reduceMotion, inactiveWidth, activeWidth]);
+  }, [unit, inactiveWidth, activeWidth, reduceMotion]);
+
+  // Sincroniza com o navigator caso ocorra navegação externa ou cancelamento
+  useEffect(() => {
+    moverPilula(activeIndex);
+  }, [activeIndex, moverPilula]);
 
   const slidingPillStyle = useAnimatedStyle(() => ({
-    left: leftEdge.value,
+    transform: [{ translateX: leftEdge.value }],
     width: Math.max(rightEdge.value - leftEdge.value, 0),
   }));
 
   const handlers = useMemo(
     () =>
       visibleRoutes.map((route, index) => ({
+        onPressIn: () => {
+          if (optimisticIndex !== index) {
+            setOptimisticIndex(index);
+            moverPilula(index);
+            if (Platform.OS !== 'web') {
+              Haptics.selectionAsync().catch(() => {});
+            }
+          }
+        },
         onPress: () => {
           const isCurrent = activeIndex === index;
           const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
           if (!isCurrent && !event.defaultPrevented) {
-            if (Platform.OS !== 'web') {
-              Haptics.selectionAsync().catch(() => {});
-            }
             navigation.navigate({ name: route.name, merge: true } as any);
           }
         },
         onLongPress: () => navigation.emit({ type: 'tabLongPress', target: route.key }),
       })),
-    [visibleRoutes, activeIndex, navigation],
+    [visibleRoutes, activeIndex, optimisticIndex, moverPilula, navigation],
   );
 
   if (!session) {
@@ -350,7 +377,7 @@ function AnimatedTabBarComponent({ state, descriptors, navigation }: BottomTabBa
                   : options.title !== undefined
                   ? options.title
                   : route.name.replace('/index', '');
-              const isFocused = activeIndex === index;
+              const isFocused = optimisticIndex === index;
 
               return (
                 <TabItem
@@ -363,6 +390,7 @@ function AnimatedTabBarComponent({ state, descriptors, navigation }: BottomTabBa
                   inactiveWidth={inactiveWidth}
                   activeWidth={activeWidth}
                   inactiveColor="#64748B"
+                  onPressIn={handlers[index]?.onPressIn ?? (() => {})}
                   onPress={handlers[index]?.onPress ?? (() => {})}
                   onLongPress={handlers[index]?.onLongPress ?? (() => {})}
                   testID={options.tabBarButtonTestID || (options as any).tabBarTestID}
@@ -419,6 +447,7 @@ const styles = StyleSheet.create({
   slidingPill: {
     position: 'absolute',
     top: 0,
+    left: 0,
     height: PILL_HEIGHT,
     borderRadius: PILL_HEIGHT / 2,
     overflow: 'hidden',
