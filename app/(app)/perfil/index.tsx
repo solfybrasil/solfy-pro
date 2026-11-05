@@ -275,7 +275,7 @@ export default function PrestadorConfiguracoesScreen() {
             .select('*')
             .eq('prestador_id', p.id)
             .order('criado_em', { ascending: false })
-            .catch(() => ({ data: [] })),
+            .then((r) => r, () => ({ data: [] })),
         ]);
 
         setPjData(pj);
@@ -288,7 +288,7 @@ export default function PrestadorConfiguracoesScreen() {
         // Normaliza a grade para todos os 7 dias da semana (0=Dom ... 6=Sab)
         const gradeNormalizada: PrestadorDisponibilidade[] = [];
         for (let dia = 0; dia <= 6; dia++) {
-          const existente = disp.find((d) => d.dia_semana === dia);
+          const existente = (disp as any[])?.find((d: any) => d.dia_semana === dia);
           if (existente) {
             gradeNormalizada.push(existente);
           } else {
@@ -1098,15 +1098,16 @@ export default function PrestadorConfiguracoesScreen() {
               />
             </View>
 
-            <View style={styles.fieldBox}>
+            <View style={[styles.fieldBox, { marginBottom: 0 }]}>
               <Text style={styles.fieldLabel}>Bio e Apresentação para Síndicos</Text>
               <TextInput
-                style={[styles.fieldInput, { height: 84, textAlignVertical: 'top' }]}
+                style={[styles.fieldInput, styles.fieldInputMultiline]}
                 value={dadosEditaveis.bio}
                 onChangeText={(t) => setDadosEditaveis((p) => ({ ...p, bio: t }))}
                 placeholder="Conte sobre sua experiência, certificações e tempo de mercado..."
                 placeholderTextColor="#94A3B8"
                 multiline
+                scrollEnabled={false}
               />
             </View>
           </View>
@@ -3207,23 +3208,31 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   fieldBox: {
-    marginBottom: 14,
+    marginBottom: 10,
   },
   fieldLabel: {
     fontSize: 12,
     fontWeight: '700',
     color: '#475569',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   fieldInput: {
-    height: 44,
+    minHeight: 44,
     borderRadius: 12,
     backgroundColor: '#F8FAFC',
     borderWidth: 1,
     borderColor: '#E2E8F0',
     paddingHorizontal: 12,
+    paddingVertical: 8,
     fontSize: 14,
     color: '#0D1B12',
+  },
+  fieldInputMultiline: {
+    height: undefined,
+    minHeight: 44,
+    paddingTop: 8,
+    paddingBottom: 8,
+    textAlignVertical: 'top',
   },
   inputWithEyeRow: {
     height: 44,
