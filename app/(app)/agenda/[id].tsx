@@ -1,6 +1,12 @@
-import React from 'react';
-import AgendaScreen from './index';
+import React, { useEffect } from 'react';
+import { useRouter } from 'expo-router';
+import { SolfyLoader } from '../../../components/SolfyLoader';
 
 export default function AgendaItemScreen() {
-  return <AgendaScreen />;
+  const router = useRouter();
+  useEffect(() => {
+    router.replace('/(app)/agenda');
+  }, [router]);
+
+  return <SolfyLoader fullscreen size="md" />;
 }

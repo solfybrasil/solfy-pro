@@ -294,25 +294,38 @@ export default function AgendaScreen() {
 
   useEffect(() => {
     if (!prestador?.id) return;
-    const channelName = `agenda_realtime_prestador_${prestador.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'agenda_compromissos',
-          filter: `prestador_id=eq.${prestador.id}`,
-        },
-        () => {
-          carregarCompromissosRef.current(true);
+    let channel: any = null;
+    try {
+      const channelName = `agenda_realtime_prestador_${prestador.id}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'agenda_compromissos',
+            filter: `prestador_id=eq.${prestador.id}`,
+          },
+          () => {
+            carregarCompromissosRef.current(true);
+          }
+        );
+      channel.subscribe((status: string, err?: Error) => {
+        if (err) {
+          console.warn('[AgendaRealtime] Status:', status, err);
         }
-      )
-      .subscribe();
+      });
+    } catch (e) {
+      console.warn('[AgendaRealtime] Erro ao conectar canal:', e);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
     };
   }, [prestador?.id]);
 

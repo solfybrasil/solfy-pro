@@ -335,7 +335,7 @@ export default function ChatThreadView({
 
     const solId = solicitacaoId;
 
-    const canalNome = `chat_${conversaId}`;
+    const canalNome = `chat_${conversaId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const canal = supabase.channel(canalNome, {
       config: { broadcast: { ack: false, self: false } },
     });

@@ -489,8 +489,9 @@ export async function buscarAprovacaoPedido(pedidoId: string): Promise<Aprovacao
  * Sempre que uma nova cotação chega ou é atualizada, chama onUpdate.
  */
 export function assinarRealtimeCotacoes(pedidoId: string, onUpdate: () => void): () => void {
+  const channelName = `solicitacao_cotacoes_${pedidoId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const channel = supabase
-    .channel(`solicitacao_cotacoes_${pedidoId}`)
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -507,7 +508,9 @@ export function assinarRealtimeCotacoes(pedidoId: string, onUpdate: () => void):
     .subscribe();
 
   return () => {
-    supabase.removeChannel(channel);
+    try {
+      supabase.removeChannel(channel);
+    } catch (_) {}
   };
 }
 

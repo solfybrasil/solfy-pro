@@ -67,6 +67,7 @@ export default function StatusAnaliseScreen() {
           if (Platform.OS !== 'web') {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
           }
+          await refreshPerfil();
           router.replace('/(app)');
         }
         return resp;
