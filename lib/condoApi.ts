@@ -1,10 +1,11 @@
 // ─── API: Solfy Condo Mobile ───────────────────────────────────────────
 // Funções de comunicação com o Supabase para o app nativo do Síndico
 
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
-import { decode } from 'base64-arraybuffer';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { decode, encode } from 'base64-arraybuffer';
 import type {
   Condominio,
   PapelCondominio,
@@ -671,15 +672,21 @@ export async function criarSolicitacaoCompleta(
     status: statusInicial,
   };
 
-  if (input.titulo) payloadSolicitacao.titulo = input.titulo.trim();
-  if (input.local_especifico) payloadSolicitacao.local_especifico = input.local_especifico.trim();
-  if (input.prazo_desejado) payloadSolicitacao.prazo_desejado = input.prazo_desejado;
-  if (input.janela_horario_preferida) payloadSolicitacao.janela_horario_preferida = input.janela_horario_preferida;
-  if (input.visita_janela_data_inicio) payloadSolicitacao.visita_janela_data_inicio = input.visita_janela_data_inicio;
-  if (input.visita_janela_data_fim) payloadSolicitacao.visita_janela_data_fim = input.visita_janela_data_fim;
-  if (input.visita_janela_horario_inicio) payloadSolicitacao.visita_janela_horario_inicio = input.visita_janela_horario_inicio;
-  if (input.visita_janela_horario_fim) payloadSolicitacao.visita_janela_horario_fim = input.visita_janela_horario_fim;
-  if (input.acesso_observacoes) payloadSolicitacao.acesso_observacoes = input.acesso_observacoes.trim();
+  if (input.titulo && input.titulo.trim()) payloadSolicitacao.titulo = input.titulo.trim();
+  if (input.local_especifico && input.local_especifico.trim()) payloadSolicitacao.local_especifico = input.local_especifico.trim();
+  if (input.prazo_desejado && input.prazo_desejado.trim()) payloadSolicitacao.prazo_desejado = input.prazo_desejado.trim();
+  if (input.janela_horario_preferida && input.janela_horario_preferida.trim()) payloadSolicitacao.janela_horario_preferida = input.janela_horario_preferida.trim();
+  if (input.visita_janela_data_inicio && input.visita_janela_data_inicio.trim()) payloadSolicitacao.visita_janela_data_inicio = input.visita_janela_data_inicio.trim();
+  if (input.visita_janela_data_fim && input.visita_janela_data_fim.trim()) payloadSolicitacao.visita_janela_data_fim = input.visita_janela_data_fim.trim();
+  if (input.visita_janela_horario_inicio && input.visita_janela_horario_inicio.trim()) {
+    const limpo = input.visita_janela_horario_inicio.trim();
+    payloadSolicitacao.visita_janela_horario_inicio = limpo.length === 5 ? `${limpo}:00` : limpo;
+  }
+  if (input.visita_janela_horario_fim && input.visita_janela_horario_fim.trim()) {
+    const limpo = input.visita_janela_horario_fim.trim();
+    payloadSolicitacao.visita_janela_horario_fim = limpo.length === 5 ? `${limpo}:00` : limpo;
+  }
+  if (input.acesso_observacoes && input.acesso_observacoes.trim()) payloadSolicitacao.acesso_observacoes = input.acesso_observacoes.trim();
   if (input.forma_pagamento_prevista) payloadSolicitacao.forma_pagamento_prevista = input.forma_pagamento_prevista;
   if (input.visibilidade_cotacao) payloadSolicitacao.visibilidade_cotacao = input.visibilidade_cotacao;
   if (input.numero_cotacoes_desejado) payloadSolicitacao.numero_cotacoes_desejado = input.numero_cotacoes_desejado;
@@ -746,52 +753,104 @@ export async function salvarRascunhoSolicitacao(
   return res.solicitacao;
 }
 
-// ─── Upload de Imagens com Expo FileSystem ──────────────────────────────────
+// ─── Upload de Imagens Otimizado para Storage & Demanda ─────────────────────
 
 export async function uploadFotoDemanda(fileUri: string): Promise<string> {
   try {
-    let arrayBuffer: ArrayBuffer;
+    let arrayBuffer: ArrayBuffer | null = null;
 
     if (fileUri.startsWith('data:')) {
       const base64Data = fileUri.includes(',') ? fileUri.split(',')[1] : fileUri;
       arrayBuffer = decode(base64Data);
+    } else if (Platform.OS !== 'web') {
+      // 1. Em dispositivos móveis nativos (Android/iOS): Redimensiona e comprime via ImageManipulator
+      // Mantém máx 1280px e qualidade 0.70 gerando JPEG leve (< 200 KB, abaixo do teto de 300 KB)
+      try {
+        const manipResult = await ImageManipulator.manipulateAsync(
+          fileUri,
+          [{ resize: { width: 1280 } }],
+          {
+            compress: 0.7,
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
+        if (manipResult.base64) {
+          arrayBuffer = decode(manipResult.base64);
+        }
+      } catch (manipErr) {
+        console.warn('[CondoAPI] Falha no ImageManipulator nativo, tentando fallback:', manipErr);
+      }
+
+      // Fallback nativo se ImageManipulator não gerou base64
+      if (!arrayBuffer) {
+        try {
+          const response = await fetch(fileUri);
+          const blob = await response.blob();
+          arrayBuffer = await blob.arrayBuffer();
+        } catch (fetchErr) {
+          console.warn('[CondoAPI] Falha no fetch fallback nativo:', fetchErr);
+        }
+      }
     } else {
-      // 1. Tenta via fetch (Blob), que funciona nativamente no Web, blob: URLs e maioria dos ambientes RN
+      // 2. Ambiente Web
       try {
         const response = await fetch(fileUri);
         const blob = await response.blob();
         arrayBuffer = await blob.arrayBuffer();
       } catch {
-        // 2. Fallback para arquivos locais no dispositivo móvel nativo
-        const base64 = await FileSystemLegacy.readAsStringAsync(fileUri, {
-          encoding: 'base64' as any,
+        const res = await fetch(fileUri);
+        const blob = await res.blob();
+        const reader = new FileReader();
+        const b64 = await new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            resolve(result.includes(',') ? result.split(',')[1] : result);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
         });
-        arrayBuffer = decode(base64);
+        arrayBuffer = decode(b64);
       }
     }
 
-    // Extrai extensão limpa
-    let fileExt = 'jpg';
-    const cleanUri = fileUri.split('?')[0].split('#')[0];
-    const lastDot = cleanUri.lastIndexOf('.');
-    if (lastDot !== -1 && lastDot > cleanUri.lastIndexOf('/')) {
-      const possibleExt = cleanUri.substring(lastDot + 1).toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'heic'].includes(possibleExt)) {
-        fileExt = possibleExt;
-      }
+    if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+      throw new Error('Não foi possível ler os dados da foto selecionada.');
+    }
+
+    // Valida teto máximo absoluto de 300 KB imposto pela trigger do banco
+    if (arrayBuffer.byteLength > 300 * 1024 && Platform.OS !== 'web') {
+      try {
+        const manipCompact = await ImageManipulator.manipulateAsync(
+          fileUri,
+          [{ resize: { width: 900 } }],
+          {
+            compress: 0.5,
+            format: ImageManipulator.SaveFormat.JPEG,
+            base64: true,
+          }
+        );
+        if (manipCompact.base64) {
+          arrayBuffer = decode(manipCompact.base64);
+        }
+      } catch (_) {}
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (!userId) {
+      throw new Error('Sessão expirada. Faça login novamente antes de enviar fotos.');
     }
 
     const BUCKET_NAME = 'solicitacao-anexos';
-    const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-    const { data: userData } = await supabase.auth.getUser();
-    const prefix = userData?.user?.id || 'demandas';
-    const filePath = `${prefix}/${fileName}`;
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+    // O prefixo DEVE ser o user.id para respeitar rigorosamente as políticas RLS e triggers de auditoria
+    const filePath = `${userId}/${fileName}`;
 
-    const contentType = `image/${fileExt === 'png' ? 'png' : fileExt === 'webp' ? 'webp' : 'jpeg'}`;
     const { error: upErr } = await supabase.storage
       .from(BUCKET_NAME)
       .upload(filePath, arrayBuffer, {
-        contentType,
+        contentType: 'image/jpeg',
         upsert: true,
       });
 
@@ -800,7 +859,11 @@ export async function uploadFotoDemanda(fileUri: string): Promise<string> {
       throw new Error(upErr.message || 'Falha ao enviar foto da demanda para o storage');
     }
 
-    return filePath;
+    const { data: pubData } = supabase.storage
+      .from(BUCKET_NAME)
+      .getPublicUrl(filePath);
+
+    return pubData?.publicUrl || filePath;
   } catch (err: any) {
     console.error('[CondoAPI] Erro no uploadFotoDemanda:', err);
     throw new Error(err.message || 'Falha ao processar e enviar foto');

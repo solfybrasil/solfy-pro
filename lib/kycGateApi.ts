@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystemLegacy from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
 import { supabase } from './supabase';
 import type { KycMeuCasoResponse, KycTipo } from '../types/kyc';
@@ -418,10 +418,20 @@ export async function kycUploadEDocumento(
         const blob = await res.blob();
         arrayBuffer = await blob.arrayBuffer();
       } catch {
-        const base64String = await FileSystemLegacy.readAsStringAsync(file.uri, {
-          encoding: 'base64' as any,
-        });
-        arrayBuffer = decode(base64String);
+        try {
+          const manip = await ImageManipulator.manipulateAsync(
+            file.uri,
+            [{ resize: { width: 1600 } }],
+            { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+          );
+          if (manip.base64) {
+            arrayBuffer = decode(manip.base64);
+          } else {
+            throw new Error('Falha ao processar arquivo para envio');
+          }
+        } catch (manipErr: any) {
+          throw new Error('Falha ao processar arquivo: ' + (manipErr?.message || 'leitura indisponível'));
+        }
       }
     }
     const sha256 = await calculateSha256(arrayBuffer);
