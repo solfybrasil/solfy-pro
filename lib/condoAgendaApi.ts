@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import type { NotificacaoItem } from './condoConfigApi';
 
@@ -29,6 +30,27 @@ export interface AgendaCompromissoItem {
  * Busca compromissos da agenda com suporte a fallback gracioso
  * caso a tabela 'agenda_compromissos' não tenha sido migrada ainda.
  */
+export const CHAVE_STORAGE_LEMBRETES = '@solfy_pro_lembretes_agenda';
+
+async function mesclarLembretesLocais(
+  itens: AgendaCompromissoItem[],
+  prestadorId?: string
+): Promise<AgendaCompromissoItem[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
+    if (!raw) return itens;
+    const locais: AgendaCompromissoItem[] = JSON.parse(raw);
+    const idsExistentes = new Set(itens.map((it) => it.id));
+    const novos = locais.filter((l) => {
+      if (idsExistentes.has(l.id)) return false;
+      if (prestadorId && l.prestador_id && l.prestador_id !== prestadorId) return false;
+      return true;
+    });
+    return [...itens, ...novos];
+  } catch {
+    return itens;
+  }
+}
 let agendaCompromissosDisponivel = true;
 
 export async function listarCompromissosAgenda(params: {
@@ -133,7 +155,7 @@ export async function listarCompromissosAgenda(params: {
           return true;
         });
 
-        return itensValidos.map((item: any) => ({
+        const listaFormatada = itensValidos.map((item: any) => ({
           id: item.id,
           condominio_id: item.condominio_id,
           solicitacao_id: item.solicitacao_id,
@@ -154,6 +176,7 @@ export async function listarCompromissosAgenda(params: {
           solicitacao_titulo: item.solicitacao?.titulo || null,
           observacoes: item.descricao || null,
         }));
+        return await mesclarLembretesLocais(listaFormatada, prestadorId);
       }
     } catch (err) {
       agendaCompromissosDisponivel = false;
@@ -239,7 +262,7 @@ export async function listarCompromissosAgenda(params: {
       return true;
     });
 
-    return visitasSemCotacao.map((v: any) => {
+    const visitasFinal = visitasSemCotacao.map((v: any) => {
       const statusMap: Record<string, AgendaCompromissoItem['status']> = {
         agendada: 'agendado',
         confirmada_sindico: 'confirmado',
@@ -273,9 +296,10 @@ export async function listarCompromissosAgenda(params: {
         observacoes: v.observacoes,
       };
     });
+    return await mesclarLembretesLocais(visitasFinal, prestadorId);
   } catch (err) {
     console.error('[CondoAgendaAPI] Erro ao carregar compromissos de visita:', err);
-    return [];
+    return await mesclarLembretesLocais([], prestadorId);
   }
 }
 
@@ -504,4 +528,104 @@ export async function agendarNovoCompromisso(
   } catch (err: any) {
     return { ok: false, error: err?.message || 'Erro inesperado ao salvar compromisso' };
   }
+}
+
+export interface FaixaHorarioItem {
+  id: string;
+  de: string;
+  ate: string;
+}
+
+export interface NovoLembretePayload {
+  prestadorId?: string | null;
+  data: string; // YYYY-MM-DD
+  titulo: string;
+  descricao?: string;
+  horarios: FaixaHorarioItem[];
+}
+
+export async function criarLembreteAgenda(
+  payload: NovoLembretePayload
+): Promise<AgendaCompromissoItem[]> {
+  const novosItens: AgendaCompromissoItem[] = [];
+  const isUuid = (val?: string | null) =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+  const safePrestadorId = isUuid(payload.prestadorId) ? payload.prestadorId : null;
+
+  for (const h of payload.horarios) {
+    const deFormatado = (h.de || '08:00').slice(0, 5);
+    const ateFormatado = (h.ate || '09:00').slice(0, 5);
+    const localId = 'rem_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 7);
+
+    const item: AgendaCompromissoItem = {
+      id: localId,
+      condominio_id: 'pessoal',
+      tipo: 'outro',
+      titulo: payload.titulo.trim(),
+      descricao: payload.descricao?.trim() || null,
+      data_inicio: payload.data,
+      data_fim: payload.data,
+      horario_inicio: deFormatado,
+      horario_fim: ateFormatado,
+      status: 'agendado',
+      prestador_id: payload.prestadorId || null,
+      local_especifico: 'Lembrete Pessoal',
+    };
+
+    try {
+      const { data: inserted, error } = await supabase
+        .from('agenda_compromissos')
+        .insert({
+          tipo: 'outro',
+          titulo: payload.titulo.trim(),
+          descricao: payload.descricao?.trim() || null,
+          data_compromisso: payload.data,
+          horario_inicio: deFormatado.length === 5 ? `${deFormatado}:00` : deFormatado,
+          horario_fim: ateFormatado.length === 5 ? `${ateFormatado}:00` : ateFormatado,
+          status: 'agendado',
+          prestador_id: safePrestadorId,
+          local_endereco: 'Lembrete Pessoal',
+          atualizado_em: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (!error && inserted?.id) {
+        item.id = inserted.id;
+      }
+    } catch (e) {
+      console.warn('[criarLembreteAgenda] Salvo em storage local offline:', e);
+    }
+
+    novosItens.push(item);
+  }
+
+  // Gravar no AsyncStorage para garantia instantânea
+  try {
+    const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
+    const existentes: AgendaCompromissoItem[] = raw ? JSON.parse(raw) : [];
+    const atualizados = [...existentes, ...novosItens];
+    await AsyncStorage.setItem(CHAVE_STORAGE_LEMBRETES, JSON.stringify(atualizados));
+  } catch (err) {
+    console.warn('[criarLembreteAgenda] Erro ao gravar localmente:', err);
+  }
+
+  return novosItens;
+}
+
+export async function excluirLembreteAgenda(lembreteId: string): Promise<boolean> {
+  try {
+    const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
+    if (raw) {
+      const existentes: AgendaCompromissoItem[] = JSON.parse(raw);
+      const filtrados = existentes.filter((item) => item.id !== lembreteId);
+      await AsyncStorage.setItem(CHAVE_STORAGE_LEMBRETES, JSON.stringify(filtrados));
+    }
+  } catch (_) {}
+
+  try {
+    await supabase.from('agenda_compromissos').delete().eq('id', lembreteId);
+  } catch (_) {}
+
+  return true;
 }

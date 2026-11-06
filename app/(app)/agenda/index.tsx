@@ -13,6 +13,7 @@ import {
   TextInput,
   FlatList,
   Alert,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -41,6 +42,7 @@ import {
   Sun,
   Paintbrush,
   RotateCcw,
+  Trash2,
 } from 'lucide-react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../../contexts/AuthContext';
@@ -50,7 +52,10 @@ import {
   listarCompromissosAgenda,
   confirmarVisitaPelaAgenda,
   cancelarVisitaPelaAgenda,
+  criarLembreteAgenda,
+  excluirLembreteAgenda,
   type AgendaCompromissoItem,
+  type FaixaHorarioItem,
 } from '../../../lib/condoAgendaApi';
 import { supabase } from '../../../lib/supabase';
 import AuroraBackground from '../../../components/AuroraBackground';
@@ -185,6 +190,16 @@ export default function AgendaScreen() {
 
   // Filtro de tipos: todos, visita_tecnica, execucao_obra
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'visita_tecnica' | 'execucao_obra'>('todos');
+
+  // ── ESTADO DO NOVO LEMBRETE ──
+  const [modalNovoLembreteVisivel, setModalNovoLembreteVisivel] = useState(false);
+  const [lembreteData, setLembreteData] = useState<string>(hojeIso);
+  const [lembreteTitulo, setLembreteTitulo] = useState('');
+  const [lembreteDescricao, setLembreteDescricao] = useState('');
+  const [faixasHorario, setFaixasHorario] = useState<FaixaHorarioItem[]>([
+    { id: '1', de: '08:00', ate: '09:00' },
+  ]);
+  const [salvandoLembrete, setSalvandoLembrete] = useState(false);
 
   const [compromissos, setCompromissos] = useState<AgendaCompromissoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -437,6 +452,138 @@ export default function AgendaScreen() {
     }
   };
 
+  // ── FUNÇÕES DE NOVO LEMBRETE ──
+  const formatarHoraFaixa = (t: string) => {
+    if (t.includes(':')) {
+      const partes = t.split(':');
+      const hh = partes[0].replace(/\D/g, '').slice(0, 2);
+      const mm = (partes[1] || '').replace(/\D/g, '').slice(0, 2);
+      return partes.length > 1 ? `${hh}:${mm}` : hh;
+    }
+    const digitos = t.replace(/\D/g, '').slice(0, 4);
+    return digitos.length > 2 ? `${digitos.slice(0, 2)}:${digitos.slice(2)}` : digitos;
+  };
+
+  const abrirModalNovoLembrete = (dataPreDefinida?: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
+    setLembreteData(dataPreDefinida || diaSelecionadoIso || hojeIso);
+    setLembreteTitulo('');
+    setLembreteDescricao('');
+    setFaixasHorario([{ id: '1', de: '08:00', ate: '09:00' }]);
+    setModalNovoLembreteVisivel(true);
+  };
+
+  const handleAdicionarFaixaHorario = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    const ultima = faixasHorario[faixasHorario.length - 1];
+    let proximoDe = '09:00';
+    let proximoAte = '10:00';
+    if (ultima && ultima.ate && ultima.ate.includes(':')) {
+      proximoDe = ultima.ate;
+      const [hh, mm] = ultima.ate.split(':').map(Number);
+      if (!isNaN(hh)) {
+        const proxH = (hh + 1) % 24;
+        proximoAte = `${String(proxH).padStart(2, '0')}:${String(mm || 0).padStart(2, '0')}`;
+      }
+    }
+    setFaixasHorario((prev) => [
+      ...prev,
+      { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), de: proximoDe, ate: proximoAte },
+    ]);
+  };
+
+  const handleRemoverFaixaHorario = (id: string) => {
+    if (faixasHorario.length <= 1) return;
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    }
+    setFaixasHorario((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const handleAlterarFaixaHorario = (id: string, campo: 'de' | 'ate', valor: string) => {
+    const valFormatado = formatarHoraFaixa(valor);
+    setFaixasHorario((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, [campo]: valFormatado } : f))
+    );
+  };
+
+  const handleSalvarNovoLembrete = async () => {
+    if (!lembreteTitulo.trim()) {
+      showToast('Por favor, informe a tarefa ou título do lembrete.');
+      return;
+    }
+    try {
+      setSalvandoLembrete(true);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+      const novos = await criarLembreteAgenda({
+        prestadorId: prestador?.id || null,
+        data: lembreteData,
+        titulo: lembreteTitulo,
+        descricao: lembreteDescricao,
+        horarios: faixasHorario,
+      });
+
+      setCompromissos((prev) => [...prev, ...novos]);
+      setModalNovoLembreteVisivel(false);
+      showToast(novos.length > 1 ? `${novos.length} horários agendados!` : 'Lembrete adicionado com sucesso!');
+
+      if (lembreteData !== diaSelecionadoIso) {
+        centralizarDia(lembreteData, true);
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao criar lembrete');
+    } finally {
+      setSalvandoLembrete(false);
+    }
+  };
+
+  const handleExcluirLembrete = async (item: AgendaCompromissoItem) => {
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      }
+      await excluirLembreteAgenda(item.id);
+      setCompromissos((prev) => prev.filter((c) => c.id !== item.id));
+      setCompromissoSelecionado(null);
+      showToast('Lembrete excluído com sucesso.');
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao excluir lembrete');
+    }
+  };
+
+  // Lista de dias para o seletor do modal
+  const diasSelecaoModal = useMemo(() => {
+    const lista: { iso: string; diaNum: number; diaSemana: string; mesNome: string }[] = [];
+    const base = new Date();
+    base.setHours(12, 0, 0, 0);
+    for (let i = 0; i < 28; i++) {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      lista.push({
+        iso: formatIso(d),
+        diaNum: d.getDate(),
+        diaSemana: DIAS_SEMANA[d.getDay()],
+        mesNome: NOMES_MESES[d.getMonth()],
+      });
+    }
+    return lista;
+  }, []);
+
+  const dataLembreteExtenso = useMemo(() => {
+    if (!lembreteData) return '';
+    const d = fromIso(lembreteData);
+    const diaSem = DIAS_LONGOS[d.getDay()];
+    const diaNum = String(d.getDate()).padStart(2, '0');
+    const mes = NOMES_MESES[d.getMonth()];
+    return `${diaSem}, ${diaNum} de ${mes}`;
+  }, [lembreteData]);
+
   // Cancelar visita
   const handleConfirmarCancelar = async () => {
     if (!compromissoSelecionado) return;
@@ -479,6 +626,9 @@ export default function AgendaScreen() {
   }, [mesNavegado]);
 
   const renderIconeCategoria = (tipo?: string, titulo?: string) => {
+    if (tipo === 'outro') {
+      return <Bell size={18} color="#059669" strokeWidth={2.2} />;
+    }
     const tit = (titulo || '').toLowerCase();
     if (tit.includes('elét') || tit.includes('elet') || tit.includes('luz')) {
       return <Zap size={18} color="#B45309" strokeWidth={2.2} />;
@@ -553,7 +703,7 @@ export default function AgendaScreen() {
             <TouchableOpacity
               style={styles.plusButton3D}
               activeOpacity={0.75}
-              onPress={() => router.push('/(app)/demandas')}
+              onPress={() => abrirModalNovoLembrete()}
             >
               <LinearGradient
                 colors={['rgba(255, 255, 255, 0.22)', 'rgba(255, 255, 255, 0.08)']}
@@ -829,8 +979,18 @@ export default function AgendaScreen() {
               <Text style={styles.emptySubtitle}>
                 {compromissosDoDia.length > 0
                   ? 'Troque o filtro acima para ver os outros compromissos do dia.'
-                  : 'Quando você aceitar agendamentos de visita técnica ou tiver obras em andamento, eles aparecerão aqui.'}
+                  : 'Quando você aceitar agendamentos ou criar lembretes neste dia, eles aparecerão aqui.'}
               </Text>
+              {compromissosDoDia.length === 0 && (
+                <TouchableOpacity
+                  style={styles.emptyCriarBtn}
+                  activeOpacity={0.8}
+                  onPress={() => abrirModalNovoLembrete(diaSelecionadoIso)}
+                >
+                  <Plus size={15} color="#FFFFFF" strokeWidth={2.6} />
+                  <Text style={styles.emptyCriarBtnText}>Criar Lembrete Neste Dia</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.timelineList}>
@@ -929,7 +1089,7 @@ export default function AgendaScreen() {
             <View style={styles.modalHeader}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.modalOverline}>
-                  {compromissoSelecionado?.tipo === 'visita_tecnica' ? 'Vistoria Técnica' : 'Execução de Obra'}
+                  {compromissoSelecionado?.tipo === 'outro' ? 'Lembrete Pessoal' : compromissoSelecionado?.tipo === 'visita_tecnica' ? 'Vistoria Técnica' : 'Execução de Obra'}
                 </Text>
                 <Text style={styles.modalTitle}>{compromissoSelecionado?.titulo}</Text>
               </View>
@@ -976,6 +1136,20 @@ export default function AgendaScreen() {
 
             {/* Ações */}
             <View style={styles.modalActions}>
+              {compromissoSelecionado?.tipo === 'outro' && (
+                <TouchableOpacity
+                  style={styles.btnDangerAction}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    if (compromissoSelecionado) {
+                      handleExcluirLembrete(compromissoSelecionado);
+                    }
+                  }}
+                >
+                  <Trash2 size={16} color="#DC2626" strokeWidth={2.2} />
+                  <Text style={styles.btnDangerActionText}>Excluir este Lembrete</Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={
                   compromissoSelecionado?.status === 'confirmado'
@@ -1035,6 +1209,211 @@ export default function AgendaScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* ── MODAL NOVO LEMBRETE (BASEADO NO EXEMPLO DO VÍDEO COM CORES SOLFY) ── */}
+      <Modal
+        visible={modalNovoLembreteVisivel}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalNovoLembreteVisivel(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={{ width: '100%', justifyContent: 'flex-end', flex: 1 }}
+          >
+            <View style={styles.lembreteSheet}>
+              <View style={styles.modalHandle} />
+
+              {/* Header do Modal */}
+              <View style={styles.lembreteHeader}>
+                <View style={styles.lembreteHeaderTitleRow}>
+                  <View style={styles.lembreteBadgeIcon}>
+                    <Bell size={18} color="#059669" strokeWidth={2.4} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.lembreteMainTitle}>Novo Lembrete</Text>
+                    <Text style={styles.lembreteMainSubtitle}>Defina o dia, horário e anotações</Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={styles.modalClose}
+                  activeOpacity={0.7}
+                  onPress={() => setModalNovoLembreteVisivel(false)}
+                >
+                  <X size={16} color="#64748B" strokeWidth={2.5} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView
+                style={{ maxHeight: SCREEN_WIDTH * 1.25 }}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 24 }}
+              >
+                {/* 1. SELEÇÃO DE DIA */}
+                <View style={styles.lembreteSectionCard}>
+                  <View style={styles.lembreteCardHeaderRow}>
+                    <Text style={styles.lembreteSectionLabel}>DIA DO COMPROMISSO</Text>
+                    <Text style={styles.lembreteCardHeaderHint}>Toque para trocar</Text>
+                  </View>
+                  <View style={styles.lembreteDataDestaqueRow}>
+                    <CalendarIcon size={16} color="#059669" strokeWidth={2.2} />
+                    <Text style={styles.lembreteDataDestaqueText}>{dataLembreteExtenso}</Text>
+                  </View>
+
+                  {/* Atalhos Rápidos */}
+                  <View style={styles.lembreteAtalhosRow}>
+                    <TouchableOpacity
+                      style={[styles.lembreteAtalhoChip, lembreteData === hojeIso && styles.lembreteAtalhoChipAtivo]}
+                      activeOpacity={0.8}
+                      onPress={() => setLembreteData(hojeIso)}
+                    >
+                      <Text style={[styles.lembreteAtalhoChipText, lembreteData === hojeIso && styles.lembreteAtalhoChipTextAtivo]}>Hoje</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.lembreteAtalhoChip,
+                        lembreteData === formatIso(new Date(Date.now() + 86400000)) && styles.lembreteAtalhoChipAtivo,
+                      ]}
+                      activeOpacity={0.8}
+                      onPress={() => setLembreteData(formatIso(new Date(Date.now() + 86400000)))}
+                    >
+                      <Text
+                        style={[
+                          styles.lembreteAtalhoChipText,
+                          lembreteData === formatIso(new Date(Date.now() + 86400000)) && styles.lembreteAtalhoChipTextAtivo,
+                        ]}
+                      >
+                        Amanhã
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Carrossel de Dias para Seleção Fácil */}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.lembreteDiasStrip}
+                  >
+                    {diasSelecaoModal.map((item) => {
+                      const isSel = item.iso === lembreteData;
+                      return (
+                        <TouchableOpacity
+                          key={item.iso}
+                          style={[styles.lembreteDiaBtn, isSel && styles.lembreteDiaBtnAtivo]}
+                          activeOpacity={0.75}
+                          onPress={() => setLembreteData(item.iso)}
+                        >
+                          <Text style={[styles.lembreteDiaBtnSemana, isSel && styles.lembreteDiaBtnSemanaAtivo]}>
+                            {item.diaSemana}
+                          </Text>
+                          <Text style={[styles.lembreteDiaBtnNum, isSel && styles.lembreteDiaBtnNumAtivo]}>
+                            {item.diaNum}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* 2. SISTEMA DE HORÁRIOS (ESTILO DO VÍDEO EXATO) */}
+                <View style={styles.lembreteSectionCard}>
+                  <View style={styles.lembreteCardHeaderRow}>
+                    <Text style={styles.lembreteSectionLabel}>HORÁRIOS</Text>
+                    <Text style={styles.lembreteCardHeaderHint}>
+                      {faixasHorario.length > 1 ? `${faixasHorario.length} faixas de horário` : '1 faixa de horário'}
+                    </Text>
+                  </View>
+
+                  {faixasHorario.map((faixa, idx) => (
+                    <View key={faixa.id} style={styles.faixaHorarioRow}>
+                      <Text style={styles.faixaRotuloText}>De</Text>
+                      <TextInput
+                        style={styles.faixaInput}
+                        value={faixa.de}
+                        onChangeText={(t) => handleAlterarFaixaHorario(faixa.id, 'de', t)}
+                        placeholder="08:00"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numbers-and-punctuation"
+                        maxLength={5}
+                      />
+                      <Text style={styles.faixaRotuloText}>Até</Text>
+                      <TextInput
+                        style={styles.faixaInput}
+                        value={faixa.ate}
+                        onChangeText={(t) => handleAlterarFaixaHorario(faixa.id, 'ate', t)}
+                        placeholder="09:00"
+                        placeholderTextColor="#94A3B8"
+                        keyboardType="numbers-and-punctuation"
+                        maxLength={5}
+                      />
+
+                      {faixasHorario.length > 1 ? (
+                        <TouchableOpacity
+                          style={styles.btnFaixaDelete}
+                          activeOpacity={0.7}
+                          onPress={() => handleRemoverFaixaHorario(faixa.id)}
+                        >
+                          <X size={15} color="#DC2626" strokeWidth={2.4} />
+                        </TouchableOpacity>
+                      ) : (
+                        <View style={{ width: 34 }} />
+                      )}
+                    </View>
+                  ))}
+
+                  {/* Botão + Adicionar outro horário (igual ao + Add More do vídeo) */}
+                  <TouchableOpacity
+                    style={styles.btnAddMorePill}
+                    activeOpacity={0.75}
+                    onPress={handleAdicionarFaixaHorario}
+                  >
+                    <Plus size={16} color="#059669" strokeWidth={2.6} />
+                    <Text style={styles.btnAddMorePillText}>+ Adicionar outro horário</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 3. CAMPO PARA ESCREVER */}
+                <View style={styles.lembreteSectionCard}>
+                  <Text style={styles.lembreteSectionLabel}>O QUE VOCÊ PRECISA FAZER?</Text>
+                  <TextInput
+                    style={styles.lembreteInputTitulo}
+                    value={lembreteTitulo}
+                    onChangeText={setLembreteTitulo}
+                    placeholder="Ex.: Comprar peças hidráulicas, ligar para o síndico..."
+                    placeholderTextColor="#94A3B8"
+                    maxLength={100}
+                  />
+
+                  <Text style={[styles.fieldSubLabel, { marginTop: 12 }]}>Anotações ou observações adicionais</Text>
+                  <TextInput
+                    style={styles.lembreteInputDescricao}
+                    value={lembreteDescricao}
+                    onChangeText={setLembreteDescricao}
+                    placeholder="Detalhes, itens para comprar, apartamento/bloco..."
+                    placeholderTextColor="#94A3B8"
+                    multiline
+                    scrollEnabled={false}
+                  />
+                </View>
+
+                {/* 4. BOTÃO SALVAR */}
+                <TouchableOpacity
+                  style={[styles.btnSalvarLembretePrincipal, salvandoLembrete && { opacity: 0.7 }]}
+                  activeOpacity={0.85}
+                  disabled={salvandoLembrete}
+                  onPress={handleSalvarNovoLembrete}
+                >
+                  <Check size={18} color="#FFFFFF" strokeWidth={2.8} />
+                  <Text style={styles.btnSalvarLembretePrincipalText}>
+                    {salvandoLembrete ? 'Salvando...' : 'Salvar Lembrete na Agenda'}
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
       {/* ── TOAST FLUTUANTE ── */}
       {toastMsg && (
         <View style={styles.toastWrap}>
@@ -1588,6 +1967,279 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '700',
     color: '#0F172A',
+  },
+  emptyCriarBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#059669',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 14,
+  },
+  emptyCriarBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  btnDangerAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  btnDangerActionText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#DC2626',
+  },
+  lembreteSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 24,
+    maxHeight: '92%',
+  },
+  lembreteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    marginBottom: 14,
+  },
+  lembreteHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  lembreteBadgeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lembreteMainTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  lembreteMainSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  lembreteSectionCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 14,
+    marginBottom: 14,
+  },
+  lembreteCardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  lembreteSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#475569',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  lembreteCardHeaderHint: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '500',
+  },
+  lembreteDataDestaqueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+  },
+  lembreteDataDestaqueText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#065F46',
+  },
+  lembreteAtalhosRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 10,
+  },
+  lembreteAtalhoChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+  },
+  lembreteAtalhoChipAtivo: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  lembreteAtalhoChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  lembreteAtalhoChipTextAtivo: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  lembreteDiasStrip: {
+    gap: 8,
+    paddingVertical: 4,
+  },
+  lembreteDiaBtn: {
+    width: 52,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lembreteDiaBtnAtivo: {
+    backgroundColor: '#059669',
+    borderColor: '#059669',
+  },
+  lembreteDiaBtnSemana: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
+  },
+  lembreteDiaBtnSemanaAtivo: {
+    color: 'rgba(255, 255, 255, 0.85)',
+  },
+  lembreteDiaBtnNum: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  lembreteDiaBtnNumAtivo: {
+    color: '#FFFFFF',
+  },
+  faixaHorarioRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  faixaRotuloText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  faixaInput: {
+    width: 78,
+    height: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+    paddingVertical: 0,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+  },
+  btnFaixaDelete: {
+    width: 34,
+    height: 34,
+    borderRadius: 8,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btnAddMorePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    borderRadius: 12,
+    paddingVertical: 10,
+    marginTop: 8,
+  },
+  btnAddMorePillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#059669',
+  },
+  fieldSubLabel: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#64748B',
+    marginBottom: 6,
+  },
+  lembreteInputTitulo: {
+    height: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  lembreteInputDescricao: {
+    minHeight: 64,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#334155',
+    textAlignVertical: 'top',
+  },
+  btnSalvarLembretePrincipal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 50,
+    borderRadius: 16,
+    backgroundColor: '#059669',
+    marginTop: 6,
+    shadowColor: '#059669',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  btnSalvarLembretePrincipalText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   toastWrap: {
     position: 'absolute',
