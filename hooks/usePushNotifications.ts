@@ -101,6 +101,20 @@ export async function configurarCanaisAndroid(): Promise<void> {
     showBadge: false,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PRIVATE,
   });
+
+  // 5. solfy_lembretes (Lembretes da Agenda: acende a tela no horário com prioridade MAX)
+  await Notifications.setNotificationChannelAsync('solfy_lembretes', {
+    name: 'Lembretes da Agenda',
+    description: 'Alarmes e lembretes de compromissos com despertar de tela',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 400, 200, 400, 200, 400],
+    lightColor: '#059669',
+    sound: 'default',
+    enableVibrate: true,
+    enableLights: true,
+    showBadge: true,
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+  });
 }
 
 // ── Helper: obtém o Expo Push Token ─────────────────────────────────────────

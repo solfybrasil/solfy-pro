@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import type { NotificacaoItem } from './condoConfigApi';
 
@@ -556,6 +558,77 @@ export interface NovoLembretePayload {
   horarios: FaixaHorarioItem[];
 }
 
+export async function agendarNotificacaoLembrete(params: {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  data: string; // YYYY-MM-DD
+  horario: string; // HH:mm
+}): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+  try {
+    const [ano, mes, dia] = params.data.split('-').map(Number);
+    const [hora, min] = params.horario.split(':').map(Number);
+    if (!ano || !mes || !dia || isNaN(hora) || isNaN(min)) return null;
+
+    const triggerDate = new Date(ano, mes - 1, dia, hora, min, 0);
+    if (triggerDate.getTime() <= Date.now()) return null;
+
+    // Configura canal Android com prioridade MAX para acender a tela
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('solfy_lembretes', {
+        name: 'Lembretes da Agenda',
+        description: 'Notificações e alarmes no horário do compromisso',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 400, 200, 400, 200, 400],
+        lightColor: '#059669',
+        sound: 'default',
+        enableVibrate: true,
+        enableLights: true,
+        showBadge: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      }).catch(() => {});
+    }
+
+    const notifId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `⏰ Lembrete: ${params.titulo}`,
+        body: params.descricao ? `${params.horario} • ${params.descricao}` : `O horário do seu compromisso (${params.horario}) começou!`,
+        sound: true,
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: [0, 400, 200, 400, 200, 400],
+        data: {
+          tipo: 'lembrete_agenda',
+          lembreteId: params.id,
+          horario: params.horario,
+          titulo: params.titulo,
+          descricao: params.descricao || '',
+        },
+        ...(Platform.OS === 'android' && {
+          channelId: 'solfy_lembretes',
+          color: '#059669',
+        }),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: triggerDate,
+      },
+    });
+
+    return notifId;
+  } catch (err) {
+    console.warn('[agendarNotificacaoLembrete] Erro ao agendar notificação:', err);
+    return null;
+  }
+}
+
+export async function cancelarNotificacaoLembrete(notifId?: string | null): Promise<void> {
+  if (!notifId || Platform.OS === 'web') return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notifId);
+  } catch (_) {}
+}
+
 export async function criarLembreteAgenda(
   payload: NovoLembretePayload
 ): Promise<AgendaCompromissoItem[]> {
@@ -609,6 +682,20 @@ export async function criarLembreteAgenda(
       console.warn('[criarLembreteAgenda] Salvo em storage local offline:', e);
     }
 
+    // Agenda notificação no sistema para quando der o horário (acender tela e som)
+    try {
+      const notifId = await agendarNotificacaoLembrete({
+        id: item.id,
+        titulo: item.titulo,
+        descricao: item.descricao,
+        data: item.data_inicio,
+        horario: item.horario_inicio,
+      });
+      if (notifId) {
+        (item as any).notifId = notifId;
+      }
+    } catch (_) {}
+
     novosItens.push(item);
   }
 
@@ -633,6 +720,18 @@ export async function excluirLembreteAgenda(lembreteId: string): Promise<boolean
     if (!listaExcluidos.includes(lembreteId)) {
       listaExcluidos.push(lembreteId);
       await AsyncStorage.setItem(CHAVE_STORAGE_EXCLUIDOS, JSON.stringify(listaExcluidos));
+    }
+  } catch (_) {}
+
+  // Cancela notificação do sistema se estiver agendada
+  try {
+    const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
+    if (raw) {
+      const existentes: any[] = JSON.parse(raw);
+      const item = existentes.find((it) => it.id === lembreteId);
+      if (item?.notifId) {
+        await cancelarNotificacaoLembrete(item.notifId);
+      }
     }
   } catch (_) {}
 
