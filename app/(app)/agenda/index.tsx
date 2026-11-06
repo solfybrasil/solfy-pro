@@ -202,13 +202,6 @@ export default function AgendaScreen() {
     { id: '1', de: '08:00', ate: '09:00' },
   ]);
   const [salvandoLembrete, setSalvandoLembrete] = useState(false);
-  // Pop-up na tela quando chega o horário do lembrete (com app aberto)
-  const [popUpLembreteAtivo, setPopUpLembreteAtivo] = useState<{
-    titulo: string;
-    horario: string;
-    descricao?: string;
-  } | null>(null);
-  const lembretesDisparadosHojeRef = useRef<Set<string>>(new Set());
 
   const [compromissos, setCompromissos] = useState<AgendaCompromissoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -230,61 +223,6 @@ export default function AgendaScreen() {
     toastTimeoutRef.current = setTimeout(() => setToastMsg(null), 3000);
   };
 
-  // ── DISPARO DE LEMBRETE QUANDO DER O HORÁRIO (SOM SOLFY + POP-UP SE APP ABERTO) ──
-  useEffect(() => {
-    let sub: any = null;
-    try {
-      if (Platform.OS !== 'web') {
-        sub = Notifications.addNotificationReceivedListener((notification) => {
-          const data: any = notification.request?.content?.data;
-          if (data?.tipo === 'lembrete_agenda') {
-            tocarSomNotificacao().catch(() => {});
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-            }
-            setPopUpLembreteAtivo({
-              titulo: String(data.titulo || notification.request?.content?.title || 'Lembrete da Agenda'),
-              horario: String(data.horario || ''),
-              descricao: String(data.descricao || notification.request?.content?.body || ''),
-            });
-          }
-        });
-      }
-    } catch (_) {}
-
-    // Verificador a cada 10 segundos quando o app está aberto em primeiro plano
-    const interval = setInterval(() => {
-      const now = new Date();
-      const horaStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      const hoje = formatIso(now);
-
-      const devidos = compromissos.filter((c) => {
-        if (c.tipo !== 'outro' || c.status === 'cancelado') return false;
-        if (c.data_inicio !== hoje) return false;
-        if (c.horario_inicio !== horaStr) return false;
-        return !lembretesDisparadosHojeRef.current.has(`${c.id}_${horaStr}`);
-      });
-
-      if (devidos.length > 0) {
-        const primeiro = devidos[0];
-        lembretesDisparadosHojeRef.current.add(`${primeiro.id}_${horaStr}`);
-        tocarSomNotificacao().catch(() => {});
-        if (Platform.OS !== 'web') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-        }
-        setPopUpLembreteAtivo({
-          titulo: primeiro.titulo,
-          horario: primeiro.horario_inicio,
-          descricao: primeiro.descricao || '',
-        });
-      }
-    }, 10000);
-
-    return () => {
-      if (sub && typeof sub.remove === 'function') sub.remove();
-      clearInterval(interval);
-    };
-  }, [compromissos]);
   // Carrossel
   const carouselFlatListRef = useRef<FlatList<any>>(null);
 
@@ -1488,45 +1426,6 @@ export default function AgendaScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
-      {/* ── POP-UP NA TELA NO HORÁRIO DO LEMBRETE (COM APP ABERTO) ── */}
-      <Modal
-        visible={!!popUpLembreteAtivo}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPopUpLembreteAtivo(null)}
-      >
-        <View style={styles.popUpAlarmeOverlay}>
-          <View style={styles.popUpAlarmeCard}>
-            <View style={styles.popUpAlarmeIconBox}>
-              <Bell size={28} color="#FFFFFF" strokeWidth={2.4} />
-            </View>
-            <View style={styles.popUpAlarmeTag}>
-              <Clock size={13} color="#059669" strokeWidth={2.5} />
-              <Text style={styles.popUpAlarmeTagText}>
-                HORÁRIO DO COMPROMISSO • {popUpLembreteAtivo?.horario}
-              </Text>
-            </View>
-            <Text style={styles.popUpAlarmeTitulo}>
-              {popUpLembreteAtivo?.titulo}
-            </Text>
-            {!!popUpLembreteAtivo?.descricao && (
-              <View style={styles.popUpAlarmeDescBox}>
-                <Text style={styles.popUpAlarmeDescText}>
-                  {popUpLembreteAtivo.descricao}
-                </Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={styles.popUpAlarmeBtnConfirmar}
-              onPress={() => setPopUpLembreteAtivo(null)}
-              activeOpacity={0.8}
-            >
-              <Check size={18} color="#FFFFFF" strokeWidth={2.5} />
-              <Text style={styles.popUpAlarmeBtnConfirmarText}>Entendido</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
       {/* ── TOAST FLUTUANTE ── */}
       {toastMsg && (
         <View style={styles.toastWrap}>
@@ -2350,97 +2249,6 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   btnSalvarLembretePrincipalText: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  popUpAlarmeOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  popUpAlarmeCard: {
-    width: '100%',
-    maxWidth: 380,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 24,
-    alignItems: 'center',
-    ...(Platform.OS === 'web'
-      ? { boxShadow: '0 12px 36px rgba(5, 150, 105, 0.25)' }
-      : {
-          elevation: 12,
-          shadowColor: '#059669',
-          shadowOffset: { width: 0, height: 8 },
-          shadowOpacity: 0.25,
-          shadowRadius: 16,
-        }),
-  },
-  popUpAlarmeIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#059669',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    shadowColor: '#059669',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  popUpAlarmeTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginBottom: 10,
-  },
-  popUpAlarmeTagText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#059669',
-    letterSpacing: 0.5,
-  },
-  popUpAlarmeTitulo: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-    textAlign: 'center',
-    marginBottom: 10,
-  },
-  popUpAlarmeDescBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 12,
-    width: '100%',
-    marginBottom: 18,
-  },
-  popUpAlarmeDescText: {
-    fontSize: 13,
-    color: '#475569',
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  popUpAlarmeBtnConfirmar: {
-    backgroundColor: '#059669',
-    height: 48,
-    borderRadius: 14,
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  popUpAlarmeBtnConfirmarText: {
     fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',

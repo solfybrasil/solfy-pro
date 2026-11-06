@@ -110,6 +110,7 @@ const eb = StyleSheet.create({
 
 import { PostLoginLoader } from '../components/PostLoginLoader';
 import { AppLockGuard } from '../components/config/AppLockGuard';
+import { GlobalLembreteAlarmeModal } from '../components/GlobalLembreteAlarmeModal';
 
 // ─── Navegação e Guarda de Rotas ───────────────────────────────────────────
 function RootLayoutNav({ fontsLoaded }: { fontsLoaded: boolean }) {
@@ -208,6 +209,8 @@ function RootLayoutNav({ fontsLoaded }: { fontsLoaded: boolean }) {
       {isPostLogin && (
         <PostLoginLoader durationSeconds={8} onFinish={finishPostLogin} />
       )}
+      {/* Alarme de Lembretes Global (visível em qualquer tela em 1º plano) */}
+      <GlobalLembreteAlarmeModal />
     </AppLockGuard>
   );
 }
