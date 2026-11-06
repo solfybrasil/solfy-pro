@@ -47,6 +47,7 @@ import {
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useNotifications } from '../../../contexts/NotificationContext';
+import { tocarSomNotificacao } from '../../../lib/notificationSound';
 import { SolfyLoader } from '../../../components/SolfyLoader';
 import {
   listarCompromissosAgenda,
@@ -200,6 +201,12 @@ export default function AgendaScreen() {
     { id: '1', de: '08:00', ate: '09:00' },
   ]);
   const [salvandoLembrete, setSalvandoLembrete] = useState(false);
+  const [bannerLembreteCriado, setBannerLembreteCriado] = useState<{
+    titulo: string;
+    data: string;
+    horario: string;
+  } | null>(null);
+  const bannerTimeoutRef = useRef<any>(null);
 
   const [compromissos, setCompromissos] = useState<AgendaCompromissoItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -529,8 +536,30 @@ export default function AgendaScreen() {
         horarios: faixasHorario,
       });
 
-      setCompromissos((prev) => [...prev, ...novos]);
+      setCompromissos((prev) => {
+        const ids = new Set(prev.map((c) => c.id));
+        const unicos = novos.filter((n) => !ids.has(n.id));
+        return [...prev, ...unicos];
+      });
       setModalNovoLembreteVisivel(false);
+
+      // 🔔 Efeito sonoro oficial Solfy + vibração tátil
+      tocarSomNotificacao().catch(() => {});
+
+      // 📱 Exibe o banner de lembrete criado na tela
+      const horarioStr = faixasHorario.map((f) => `${f.de} – ${f.ate}`).join(
+);
+      setBannerLembreteCriado({
+        titulo: lembreteTitulo,
+        data: dataLembreteExtenso,
+        horario: horarioStr,
+      });
+
+      if (bannerTimeoutRef.current) clearTimeout(bannerTimeoutRef.current);
+      bannerTimeoutRef.current = setTimeout(() => {
+        setBannerLembreteCriado(null);
+      }, 5000);
+
       showToast(novos.length > 1 ? `${novos.length} horários agendados!` : 'Lembrete adicionado com sucesso!');
 
       if (lembreteData !== diaSelecionadoIso) {
@@ -1414,6 +1443,36 @@ export default function AgendaScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+      {/* ── BANNER VISUAL DE LEMBRETE CRIADO NA TELA ── */}
+      {bannerLembreteCriado && (
+        <Animated.View
+          entering={FadeInDown.duration(350).springify()}
+          style={[styles.lembreteCriadoBanner, { top: insets.top + 8 }]}
+        >
+          <View style={styles.lembreteCriadoIconBox}>
+            <Bell size={20} color="#059669" strokeWidth={2.4} />
+          </View>
+          <View style={styles.lembreteCriadoContent}>
+            <View style={styles.lembreteCriadoHeaderRow}>
+              <Text style={styles.lembreteCriadoTag}>LEMBRETE AGENDADO</Text>
+              <Text style={styles.lembreteCriadoHorario}>{bannerLembreteCriado.horario}</Text>
+            </View>
+            <Text style={styles.lembreteCriadoTitulo} numberOfLines={1}>
+              {bannerLembreteCriado.titulo}
+            </Text>
+            <Text style={styles.lembreteCriadoSub} numberOfLines={1}>
+              {bannerLembreteCriado.data}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.lembreteCriadoCloseBtn}
+            onPress={() => setBannerLembreteCriado(null)}
+            activeOpacity={0.7}
+          >
+            <X size={15} color="#94A3B8" strokeWidth={2.4} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
       {/* ── TOAST FLUTUANTE ── */}
       {toastMsg && (
         <View style={styles.toastWrap}>
@@ -2240,6 +2299,78 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  lembreteCriadoBanner: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    zIndex: 9999,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    ...(Platform.OS === 'web'
+      ? { boxShadow: '0 8px 24px rgba(5, 150, 105, 0.2)' }
+      : {
+          elevation: 8,
+          shadowColor: '#059669',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.22,
+          shadowRadius: 12,
+        }),
+  },
+  lembreteCriadoIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lembreteCriadoContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+  lembreteCriadoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 2,
+  },
+  lembreteCriadoTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+    letterSpacing: 0.5,
+  },
+  lembreteCriadoHorario: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  lembreteCriadoTitulo: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  lembreteCriadoSub: {
+    fontSize: 11.5,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  lembreteCriadoCloseBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toastWrap: {
     position: 'absolute',
