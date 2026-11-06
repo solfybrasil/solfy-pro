@@ -31,24 +31,36 @@ export interface AgendaCompromissoItem {
  * caso a tabela 'agenda_compromissos' não tenha sido migrada ainda.
  */
 export const CHAVE_STORAGE_LEMBRETES = '@solfy_pro_lembretes_agenda';
+export const CHAVE_STORAGE_EXCLUIDOS = '@solfy_pro_lembretes_excluidos';
 
 async function mesclarLembretesLocais(
   itens: AgendaCompromissoItem[],
   prestadorId?: string
 ): Promise<AgendaCompromissoItem[]> {
   try {
+    const rawExcluidos = await AsyncStorage.getItem(CHAVE_STORAGE_EXCLUIDOS);
+    const idsExcluidos = new Set<string>(rawExcluidos ? JSON.parse(rawExcluidos) : []);
+
+    const itensLimpos = itens.filter(
+      (it) => !idsExcluidos.has(it.id) && it.status !== 'cancelado'
+    );
+
     const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
-    if (!raw) return itens;
+    if (!raw) return itensLimpos;
+
     const locais: AgendaCompromissoItem[] = JSON.parse(raw);
-    const idsExistentes = new Set(itens.map((it) => it.id));
+    const idsExistentes = new Set(itensLimpos.map((it) => it.id));
     const novos = locais.filter((l) => {
+      if (idsExcluidos.has(l.id)) return false;
+      if (l.status === 'cancelado') return false;
       if (idsExistentes.has(l.id)) return false;
       if (prestadorId && l.prestador_id && l.prestador_id !== prestadorId) return false;
       return true;
     });
-    return [...itens, ...novos];
+
+    return [...itensLimpos, ...novos];
   } catch {
-    return itens;
+    return itens.filter((it) => it.status !== 'cancelado');
   }
 }
 let agendaCompromissosDisponivel = true;
@@ -614,6 +626,17 @@ export async function criarLembreteAgenda(
 }
 
 export async function excluirLembreteAgenda(lembreteId: string): Promise<boolean> {
+  // 1. Grava na lista negra permanente de excluídos no AsyncStorage
+  try {
+    const rawExcluidos = await AsyncStorage.getItem(CHAVE_STORAGE_EXCLUIDOS);
+    const listaExcluidos: string[] = rawExcluidos ? JSON.parse(rawExcluidos) : [];
+    if (!listaExcluidos.includes(lembreteId)) {
+      listaExcluidos.push(lembreteId);
+      await AsyncStorage.setItem(CHAVE_STORAGE_EXCLUIDOS, JSON.stringify(listaExcluidos));
+    }
+  } catch (_) {}
+
+  // 2. Remove do cache local de lembretes ativos
   try {
     const raw = await AsyncStorage.getItem(CHAVE_STORAGE_LEMBRETES);
     if (raw) {
@@ -623,6 +646,18 @@ export async function excluirLembreteAgenda(lembreteId: string): Promise<boolean
     }
   } catch (_) {}
 
+  // 3. Atualiza status no Supabase para cancelado (soft delete sempre aceito por RLS)
+  try {
+    await supabase
+      .from('agenda_compromissos')
+      .update({
+        status: 'cancelado',
+        atualizado_em: new Date().toISOString(),
+      })
+      .eq('id', lembreteId);
+  } catch (_) {}
+
+  // 4. Também tenta delete físico
   try {
     await supabase.from('agenda_compromissos').delete().eq('id', lembreteId);
   } catch (_) {}
